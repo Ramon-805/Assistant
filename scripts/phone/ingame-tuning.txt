@@ -1,0 +1,26 @@
+Paste these into the in-game chat box once you are logged in.
+Source: docs/02-zfold-client-setup.md — thermal configuration.
+
+The FPS cap is the single biggest thermal win. Uncapped, the client chases
+100+ fps and cooks the phone for no benefit on a panel you are not going to
+notice it on.
+
+    /console maxfps 30
+
+Secondary, but free:
+
+    /console shadowLOD 0
+    /console farclip 177
+    /console particleDensity 0.3
+    /console groundEffectDensity 16
+    /console SetEnvironmentDetail 0.5
+
+Outside the game, on the phone itself:
+
+  - Display settings -> Motion smoothness -> Standard (disables 120Hz)
+  - Never play while charging
+  - Airplane mode + Wi-Fi if you do not need cellular
+
+Heat comes from Box64 translating x86 CPU instructions, not from the GPU, so
+lowering graphics settings helps less than you would expect. The FPS cap and
+the render resolution are what actually matter.

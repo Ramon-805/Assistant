@@ -1,0 +1,10 @@
+# Holds your MySQL password and LAN IP.
+config/settings.psd1
+
+# Extraction logs and generated phone files.
+logs/
+out/
+
+# Local scratch
+*.bak
+*.log
