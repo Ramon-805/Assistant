@@ -17,7 +17,7 @@ you know which piece broke.
 
 No server needed. If this fails, nothing else matters.
 
-- [ ] Winlator installed (winlator.com, or the `afeimod` fork)
+- [x] Winlator installed — 11.1 "Final", from the official GitHub releases
 - [ ] 1.12.1 client copied to `Internal Storage/Download/wow-vanilla/` (internal storage, not external media)
 - [ ] Container created — Turnip driver, DXVK, 1600x900, Box64 Performance, 4096 MB RAM
 - [ ] Shortcut to `WoW.exe`, launches

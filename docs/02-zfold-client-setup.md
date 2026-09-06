@@ -16,7 +16,7 @@ Your real constraint is **thermal, not performance**. The Fold is 4.1mm thin unf
 
 The client renders its login screen without a server. Get there first.
 
-1. Install **Winlator** (winlator.com, or the community `afeimod` fork — both work; the fork often has newer driver options).
+1. Install **Winlator** from the project's own releases: [github.com/brunodev85/winlator/releases](https://github.com/brunodev85/winlator/releases), or winlator.org. Take **11.1 "Final"** over a beta — Phase 0 is for proving the concept, not debugging a prerelease. (`winlator.com` is a third-party aggregator, not the project's site.) Community forks such as `afeimod` often carry newer driver options; leave those until vanilla works end to end.
 2. Copy the **1.12.1 client folder** from PC to phone via USB. `Internal Storage/Download/wow-vanilla/`.
 3. Create a container (settings below).
 4. Add a shortcut pointing at `WoW.exe`.
