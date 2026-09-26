@@ -1,0 +1,40 @@
+-- Cast detection. Midnight removed the combat log for addons; the player's
+-- own UNIT_SPELLCAST_SUCCEEDED still carries a readable spellID, even in
+-- combat. Other unit tokens carry secret spellIDs and are never registered.
+local _, IRL = ...
+
+-- Is this character subject to the gate table? Build 1: monks, except the
+-- specs in Config.exemptSpecs (low-level monks with no spec are enforced).
+function IRL.IsEnforced()
+  local _, class = UnitClass("player")
+  if class ~= "MONK" then return false end
+  local getSpec = (C_SpecializationInfo and C_SpecializationInfo.GetSpecialization) or GetSpecialization
+  local getInfo = (C_SpecializationInfo and C_SpecializationInfo.GetSpecializationInfo) or GetSpecializationInfo
+  local index = getSpec and getSpec()
+  if index and not IRL.IsSecret(index) and getInfo then
+    local specID = getInfo(index)
+    if specID and not IRL.IsSecret(specID) and IRL.Config.exemptSpecs[specID] then return false end
+  end
+  return true
+end
+
+-- Spell name for an ID, or nil if unreadable.
+function IRL.SpellName(spellID)
+  if spellID == nil or IRL.IsSecret(spellID) or type(spellID) ~= "number" then return nil end
+  local name = C_Spell.GetSpellName(spellID)
+  if name == nil or IRL.IsSecret(name) then return nil end
+  return name
+end
+
+local frame = CreateFrame("Frame")
+frame:RegisterUnitEvent("UNIT_SPELLCAST_SUCCEEDED", "player")
+frame:SetScript("OnEvent", function(_, _, unit, _, spellID)
+  if unit ~= "player" or not IRL.state or not IRL.enforced then return end
+  local name = IRL.SpellName(spellID)
+  if not name then return end
+  local gate = IRL.FindGate(name)
+  if not gate or gate.unlocked then return end
+  if IRL.AddFlag(gate.name, "cast") then
+    IRL.ShowWarning(IRL.LockedMessage(gate))
+  end
+end)

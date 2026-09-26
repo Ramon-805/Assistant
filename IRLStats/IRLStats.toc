@@ -1,0 +1,37 @@
+## Interface: 120100
+## Title: IRL Stats
+## Notes: Gates monk abilities and talents behind real-life fitness milestones. Flags, never blocks.
+## Author: Ray
+## Version: 0.1.0
+## IconTexture: Interface\Icons\ClassIcon_Monk
+## SavedVariables: IRLStatsDB
+## SavedVariablesPerCharacter: IRLStatsCharDB
+
+Init.lua
+
+Data\Tests.lua
+Data\Gates.lua
+Data\Norms.lua
+
+Core\Units.lua
+Core\Milestones.lua
+Core\Streaks.lua
+Core\Gates.lua
+Core\DB.lua
+
+Detect\Flags.lua
+UI\Widgets.lua
+Detect\Casts.lua
+Detect\Talents.lua
+
+UI\MainFrame.lua
+UI\GoalsTab.lua
+UI\TodayTab.lua
+UI\FlagsTab.lua
+UI\Wizard.lua
+UI\Overlays.lua
+UI\Tooltips.lua
+UI\TalentFrame.lua
+UI\Minimap.lua
+
+Main.lua
