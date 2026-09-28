@@ -234,13 +234,14 @@ check(wiz.step == 1, "wizard advances past profile")
 -- category 1 (speed): pick a test via its menu
 Fire(wiz.category.test, "OnClick")
 menuItems[1].cb()
-wiz.category.pr.edit:SetText("5.10")
-wiz.category.goal.edit:SetText("4.70")
+check(wiz.category.how:GetText():find("^How: Set a 1%-minute timer"), "wizard shows how to self-test")
+wiz.category.pr.edit:SetText("20")
+wiz.category.goal.edit:SetText("30")
 Fire(wiz.next, "OnClick")
 check(wiz.step == 2, "wizard advances past speed: " .. tostring(wiz.error:GetText()))
 -- skip the rest
 for _ = 2, 8 do Fire(wiz.skip, "OnClick") end
-check(IRL.db.setupDone and IRL.db.categories.speed.goal == 4.70 and IRL.db.profile.age == 34, "wizard saved profile and speed")
+check(IRL.db.setupDone and IRL.db.categories.speed.goal == 30 and IRL.db.profile.age == 34, "wizard saved profile and speed")
 check(math.abs(IRL.db.profile.weight - 180 / 2.20462) < 0.01, "bodyweight stored in kg")
 
 -- Main window tabs and PR logging
@@ -253,12 +254,13 @@ local goals = main.pages[1]
 local speedRow = goals.rows[1]
 Fire(speedRow.log, "OnClick")
 local prompt = _G.IRLStatsPrompt
-prompt.input.edit:SetText("5.00")
+check(prompt.how:GetText():find("^How: "), "Log PR prompt shows how to self-test")
+prompt.input.edit:SetText("22")
 Fire(prompt.ok, "OnClick")
-check(IRL.db.categories.speed.pr == 5.00, "Log PR via the Goals tab")
+check(IRL.db.categories.speed.pr == 22, "Log PR via the Goals tab")
 check(IRL.FindGate("Tiger's Lust").unlocked, "Tiger's Lust unlocked by the new PR")
-check(speedRow.bar.text:GetText() == "Next: 4.95 s  (1/6)", "progress bar text: " .. speedRow.bar.text:GetText())
-check(speedRow.pr:GetText() == "5.00 s", "PR column updated")
+check(speedRow.bar.text:GetText() == "Next: 24  (1/5)", "progress bar text: " .. speedRow.bar.text:GetText())
+check(speedRow.pr:GetText() == "22", "PR column updated")
 
 -- Today tab buttons
 local today = main.pages[2]

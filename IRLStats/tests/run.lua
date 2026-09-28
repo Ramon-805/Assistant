@@ -290,5 +290,40 @@ test("rebaseline restarts the ladder from the current PR", function()
   eq(IRL.state.categories.grip.rungs[1], 48.5)
 end)
 
+test("holds: whole seconds, m:ss over a minute", function()
+  fresh()
+  eq(IRL.Units.Format("plank", 45), "45 s")
+  eq(IRL.Units.Format("plank", 95), "1:35")
+  near(IRL.Units.Parse("plank", "1:35"), 95)
+  near(IRL.Units.Parse("deadhang", "40"), 40)
+end)
+
+test("rep and hold tests climb +10% per rung", function()
+  fresh()
+  IRL.SetTest("speed", "burpees60"); IRL.LogPR("speed", 20); IRL.SetGoal("speed", 30)
+  local r = IRL.state.categories.speed.rungs
+  eq(r[1], 22); eq(r[2], 24); eq(r[#r], 30); eq(#r, 5)
+  IRL.SetTest("core", "plank"); IRL.LogPR("core", 60); IRL.SetGoal("core", 120)
+  eq(IRL.state.categories.core.rungs[1], 66)
+end)
+
+test("every offered test has self-test instructions; legacy tests are hidden", function()
+  for cat, def in pairs(IRL.Categories) do
+    for _, key in ipairs(def.tests) do
+      local t = IRL.Tests[key]
+      eq(t ~= nil, true, key)
+      eq(type(t.how), "string", key .. " how")
+      eq(t.legacy, nil, key .. " legacy")
+    end
+  end
+end)
+
+test("a category on a retired test keeps working", function()
+  fresh()
+  IRL.SetTest("agility", "proagility"); IRL.LogPR("agility", 5.0); IRL.SetGoal("agility", 4.6)
+  IRL.LogPR("agility", 4.9)
+  eq(IRL.FindGate("Roll").unlocked, true)
+end)
+
 print(string.format("\n%d passed, %d failed", passed, failed))
 os.exit(failed == 0 and 0 or 1)

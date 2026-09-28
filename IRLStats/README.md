@@ -87,7 +87,14 @@ out of date, bump that number to the live build's interface version.
     and Dominos buttons aren't tinted in build 1, but casts from them are
     still flagged. Rising Sun Kick's button follows its Rushing Wind Kick
     override.
-13. **Skill ladders have no goal pre-fill.** Body control and mobility tests
+13. **Tests are chosen for solo self-testing.** Each category leads with
+    tests you can run alone with a pull-up bar, the floor, a wall and a phone
+    (timer, GPS or reaction app). Each one has a "How" line shown when you log
+    a result. Drills that need a partner, cones or gym equipment (5-10-5,
+    T-test, sprints, med ball, landmine, rower) are retired: they're hidden
+    from pickers, but a category already using one keeps working. Rep counts
+    and timed holds climb +10% per rung (`Config.countStep`).
+14. **Skill ladders have no goal pre-fill.** Body control and mobility tests
     are skill ladders (planche, handstand, front lever, splits, squat depth,
     pike). You pick the level you're at and the level you're aiming for.
 
@@ -104,7 +111,7 @@ trust the pre-fill.
 From this folder, with Lua 5.1 (WoW's Lua version):
 
 ```
-lua5.1 tests/run.lua     # milestone, gate, streak, habit, flag and unit logic (23 tests)
+lua5.1 tests/run.lua     # milestone, gate, streak, habit, flag and unit logic (27 tests)
 lua5.1 tests/smoke.lua   # loads every TOC file against a mocked WoW API and drives login,
                          # casts, talent walk, overlays, tooltips, wizard, tabs and slash commands
 ```

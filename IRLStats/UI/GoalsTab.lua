@@ -39,6 +39,7 @@ function UI.PromptPR(cat, thenGoal)
   UI.Prompt({
     title = IRL.Categories[cat].label,
     text = "Log a result for " .. IRL.Tests[c.test].label .. ".",
+    showHow = true,
     test = c.test,
     value = IRL.Tests[c.test].unit == "level" and c.pr or nil,
     onAccept = function(v)
@@ -183,7 +184,7 @@ local function RefreshRow(row)
   end
 
   row.log:SetText("Log PR")
-  row.test:SetText(IRL.Tests[c.test].label)
+  row.test:SetText(IRL.Tests[c.test].label .. (IRL.Tests[c.test].legacy and " |cff999999(retired)|r" or ""))
   row.pr:SetText(Units.Format(c.test, c.pr))
   row.goal:SetText(Units.Format(c.test, c.goal))
 

@@ -14,7 +14,7 @@ local function trim(s) return (s:gsub("^%s+", ""):gsub("%s+$", "")) end
 
 -- Rounding precision in canonical units; milestone values snap to these.
 Units.precision = {
-  seconds = 0.01, ms = 1, jump = 1, throw = 0.1, run = 10, mass = 0.5, reps = 1, vo2 = 0.1, level = 1,
+  seconds = 0.01, hold = 1, ms = 1, jump = 1, throw = 0.1, run = 10, mass = 0.5, reps = 1, vo2 = 0.1, level = 1,
 }
 
 local function isImperial()
@@ -37,6 +37,12 @@ local function formatSeconds(v)
   return string.format("%.2f s", v)
 end
 
+local function formatHold(v)
+  local total = math.floor(v + 0.5)
+  if total >= 60 then return string.format("%d:%02d", math.floor(total / 60), total % 60) end
+  return string.format("%d s", total)
+end
+
 -- Short value, e.g. "4.95 s", "7 ft 6 in", "Tuck planche".
 function Units.Format(testKey, v)
   if v == nil then return "--" end
@@ -44,6 +50,8 @@ function Units.Format(testKey, v)
   local unit = test and test.unit or "seconds"
   if unit == "seconds" then
     return formatSeconds(v)
+  elseif unit == "hold" then
+    return formatHold(v)
   elseif unit == "ms" then
     return string.format("%d ms", math.floor(v + 0.5))
   elseif unit == "jump" then
@@ -87,7 +95,7 @@ function Units.InputHint(testKey)
   local test = IRL.Tests[testKey]
   local unit = test and test.unit
   local imp = isImperial()
-  if unit == "seconds" then return "seconds (or m:ss)"
+  if unit == "seconds" or unit == "hold" then return "seconds (or m:ss)"
   elseif unit == "ms" then return "milliseconds"
   elseif unit == "jump" then return imp and "inches, or 7'6\"" or "cm"
   elseif unit == "throw" then return imp and "feet" or "meters"
@@ -107,6 +115,10 @@ function Units.EditText(testKey, v)
   if unit == "seconds" then
     if v >= 60 then return formatSeconds(v) end
     return string.format("%.2f", v)
+  elseif unit == "hold" then
+    local total = math.floor(v + 0.5)
+    if total >= 60 then return formatHold(v) end
+    return string.format("%d", total)
   elseif unit == "jump" then
     return imp and string.format("%d", math.floor(v / CM_PER_IN + 0.5)) or string.format("%d", math.floor(v + 0.5))
   elseif unit == "throw" then
@@ -131,7 +143,7 @@ function Units.Parse(testKey, text)
   local imp = isImperial()
   local v
 
-  if unit == "seconds" then
+  if unit == "seconds" or unit == "hold" then
     local m, s = text:match("^(%d+):(%d+%.?%d*)$")
     if m then v = tonumber(m) * 60 + tonumber(s) else v = tonumber((text:gsub("%s*s$", ""))) end
   elseif unit == "jump" then

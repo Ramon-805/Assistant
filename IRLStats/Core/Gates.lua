@@ -51,7 +51,8 @@ function G.Compute(db, today)
     else
       local test = IRL.Tests[c.test]
       local absolute = test.unit == "level"
-      local step = absolute and 1 or (cfg.steps[cat] or 0.05)
+      local counted = test.unit == "reps" or test.unit == "hold"
+      local step = absolute and 1 or (counted and cfg.countStep) or cfg.steps[cat] or 0.05
       local rungs = M.Build(c.test, c.baseline, c.goal, step, absolute, cfg.maxRungs)
       local achieved = M.Achieved(c.test, rungs, c.pr)
       cs.rungs, cs.achieved = rungs, achieved

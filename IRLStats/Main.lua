@@ -159,7 +159,16 @@ frame:SetScript("OnEvent", function(self, event, arg1)
     if not IRL.db.setupDone then
       IRL.Print("Welcome! Let's set up your real-life stats. (/irl setup any time)")
       C_Timer.After(3, IRL.UI.ShowWizard)
-    elseif not IRL.enforced then
+    else
+      for _, cat in ipairs(IRL.CategoryOrder) do
+        local test = IRL.db.categories[cat].test
+        if test and IRL.Tests[test].legacy then
+          IRL.Print(IRL.Categories[cat].label .. " uses the " .. IRL.Tests[test].label
+            .. ", which is no longer offered. Switch to an easier solo test from the ... menu in /irl.")
+        end
+      end
+    end
+    if IRL.db.setupDone and not IRL.enforced then
       IRL.Print("Gates aren't enforced on this character (build 1 covers Windwalker monks).")
     end
   end

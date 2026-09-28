@@ -18,6 +18,9 @@ IRL.Config = {
     conditioning = 0.05,
     mobility     = 1,
   },
+  -- Rep counts and timed holds climb faster than times and distances, so
+  -- they use this step instead of the category's.
+  countStep = 0.10,
   reservedTopRungs = 3,   -- gates sit below these; apex ranks sit on them
   maxRungs = 30,          -- far-away goals get bigger steps rather than 100 rungs
   flagCooldown = 60,      -- seconds; same locked spell flags at most once per window
