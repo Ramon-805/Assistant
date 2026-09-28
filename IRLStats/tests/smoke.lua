@@ -86,6 +86,7 @@ function InCombatLockdown() return inCombat end
 function UnitAffectingCombat() return inCombat end
 function UnitClass() return "Monk", "MONK" end
 function UnitName() return "Ray" end
+function UnitLevel() return 12 end
 C_SpecializationInfo = { GetSpecialization = function() return 3 end, GetSpecializationInfo = function() return 269 end }
 local clock = 0
 function GetTime() return clock end
@@ -269,6 +270,28 @@ IRL.LogSession("pt")
 IRL.LogSession("training")
 IRL.ToggleMain("Flags")
 check(main.pages[3].count:GetText():find("flags on Ray"), "flags tab header: " .. main.pages[3].count:GetText())
+
+-- /irl verify: loadout path, view-only fallback, renamed ID
+local function verifyOutput()
+  chat = {}
+  SlashCmdList.IRLSTATS("verify")
+  return table.concat(chat, "\n")
+end
+local out = verifyOutput()
+check(out:find("talents read from your talent loadout"), "verify reads the active loadout")
+check(out:find("Not found: Chi Torpedo"), "verify lists names it can't find")
+C_ClassTalents.GetActiveConfigID = function() return nil end
+C_ClassTalents.InitializeViewLoadout = function() end
+Constants = { TraitConsts = { VIEW_TRAIT_CONFIG_ID = -3 } }
+out = verifyOutput()
+check(out:find("a view%-only Windwalker tree"), "verify falls back to a view-only tree below level 10")
+SPELLS[116841], SPELLS[102] = "Tiger's Dash", nil
+out = verifyOutput()
+check(out:find("Tiger's Lust: spell 116841 is now called \"Tiger's Dash\""), "verify reports a renamed spell ID")
+SPELLS[116841], SPELLS[102] = nil, "Tiger's Lust"
+C_Traits.GetConfigInfo = function() return nil end
+out = verifyOutput()
+check(out:find("nowhere"), "verify says when talent data is unavailable")
 
 -- Slash commands
 for _, cmd in ipairs({ "", "today", "flags", "checkin", "pt", "trained", "verify", "minimap", "help", "setup" }) do

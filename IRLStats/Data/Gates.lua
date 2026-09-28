@@ -31,3 +31,27 @@ IRL.SpecialGates = {
     requires = { "speed", "grip", "mobility", "power" },
   },
 }
+
+-- Known spell IDs (pre-Midnight values; may have changed in 12.1). Used only
+-- by /irl verify: an ID's name can be read whether or not you've learned the
+-- spell, so this checks names at any level. If an ID now resolves to a
+-- different name, verify prints it so the gate table can be corrected.
+-- Gating itself never uses these: it matches the name of whatever you cast.
+IRL.SpellIDHints = {
+  ["Roll"] = 109132,
+  ["Chi Torpedo"] = 115008,
+  ["Tiger's Lust"] = 116841,
+  ["Spear Hand Strike"] = 116705,
+  ["Paralysis"] = 115078,
+  ["Flying Serpent Kick"] = 101545,
+  ["Strike of the Windlord"] = 392983,
+  ["Touch of Death"] = 322109,
+  ["Leg Sweep"] = 119381,
+  ["Spinning Crane Kick"] = 101546,
+  ["Whirling Dragon Punch"] = 152175,
+  ["Fists of Fury"] = 113656,
+  ["Rising Sun Kick"] = 107428,
+  ["Fortifying Brew"] = 115203,
+  ["Vivify"] = 116670,
+  ["Expel Harm"] = 322101,
+}

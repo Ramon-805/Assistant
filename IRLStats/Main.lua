@@ -8,43 +8,77 @@ end
 IRL.On("STATE_CHANGED", OnStateChanged)
 
 --------------------------------------------------------------------------
--- /irl verify: check every gate name against the live spellbook and the
--- active talent config (answers "are these names right in 12.1?").
+-- /irl verify: check every gate name against the live client. Works at any
+-- level: names are checked by spell ID (readable whether or not the spell is
+-- learned), by spellbook, and against the Windwalker talent tree, which is
+-- read from your loadout or, below level 10, from a view-only copy.
 --------------------------------------------------------------------------
-local function CollectTalentNames()
-  local names = {}
-  local configID = C_ClassTalents.GetActiveConfigID()
-  local configInfo = configID and C_Traits.GetConfigInfo(configID)
-  if not configInfo then return names, false end
-  for _, treeID in ipairs(configInfo.treeIDs or {}) do
+local WINDWALKER = 269
+
+local function ScanConfig(configID, names)
+  local info = configID and C_Traits.GetConfigInfo(configID)
+  if not info or not info.treeIDs or #info.treeIDs == 0 then return false end
+  local count = 0
+  for _, treeID in ipairs(info.treeIDs) do
     for _, nodeID in ipairs(C_Traits.GetTreeNodes(treeID) or {}) do
       local node = C_Traits.GetNodeInfo(configID, nodeID)
       for _, entryID in ipairs(node and node.entryIDs or {}) do
         local entry = C_Traits.GetEntryInfo(configID, entryID)
         local def = entry and entry.definitionID and C_Traits.GetDefinitionInfo(entry.definitionID)
-        local name = def and ((def.overrideName ~= "" and def.overrideName) or IRL.SpellName(def.spellID))
-        if name then names[name:lower()] = true end
+        local name = def and ((def.overrideName and def.overrideName ~= "" and def.overrideName) or IRL.SpellName(def.spellID))
+        if name then names[name:lower()] = true; count = count + 1 end
       end
     end
   end
+  local specID = IRL.CurrentSpecID() or WINDWALKER
   if C_ClassTalents.GetHeroTalentSpecsForClassSpec then
-    local subTreeIDs = C_ClassTalents.GetHeroTalentSpecsForClassSpec(configID)
-    for _, id in ipairs(subTreeIDs or {}) do
-      local info = C_Traits.GetSubTreeInfo(configID, id)
-      if info and info.name then names[info.name:lower()] = true end
+    for _, id in ipairs(C_ClassTalents.GetHeroTalentSpecsForClassSpec(configID, specID) or {}) do
+      local sub = C_Traits.GetSubTreeInfo(configID, id)
+      if sub and sub.name then names[sub.name:lower()] = true; count = count + 1 end
     end
   end
-  return names, true
+  return count > 0
+end
+
+-- Returns a set of lower-cased talent names and where they came from.
+local function CollectTalentNames()
+  local names = {}
+  local specID = IRL.CurrentSpecID()
+  local candidates = { C_ClassTalents.GetActiveConfigID() }
+  if specID and C_ClassTalents.GetConfigIDsBySpecID then
+    for _, id in ipairs(C_ClassTalents.GetConfigIDsBySpecID(specID) or {}) do table.insert(candidates, id) end
+  end
+  for _, id in ipairs(candidates) do
+    local ok, found = pcall(ScanConfig, id, names)
+    if ok and found then return names, "your talent loadout" end
+  end
+  -- No usable loadout (e.g. below level 10): build a view-only Windwalker tree.
+  local viewID = Constants and Constants.TraitConsts and Constants.TraitConsts.VIEW_TRAIT_CONFIG_ID
+  if viewID and C_ClassTalents.InitializeViewLoadout then
+    local maxLevel = GetMaxLevelForPlayerExpansion and GetMaxLevelForPlayerExpansion() or 90
+    local ok = pcall(C_ClassTalents.InitializeViewLoadout, specID or WINDWALKER, maxLevel)
+    local ok2, found = pcall(ScanConfig, viewID, names)
+    if ok and ok2 and found then return names, "a view-only Windwalker tree" end
+  end
+  return names, nil
 end
 
 local function Verify()
   if InCombatLockdown() then IRL.Print("Run /irl verify out of combat.") return end
-  local talents, haveTalents = CollectTalentNames()
-  local missing, total = {}, 0
+  local talents, source = CollectTalentNames()
+  local found, missing, renamed, total = 0, {}, {}, 0
+
   local function check(name)
     total = total + 1
-    local inBook = C_Spell.GetSpellInfo(name) ~= nil
-    if not inBook and not talents[name:lower()] then table.insert(missing, name) end
+    local id = IRL.SpellIDHints[name]
+    local byID = id and IRL.SpellName(id)
+    if byID and byID:lower() == name:lower() then found = found + 1 return end
+    if talents[name:lower()] or C_Spell.GetSpellInfo(name) ~= nil then found = found + 1 return end
+    if byID then
+      table.insert(renamed, string.format("%s: spell %d is now called \"%s\"", name, id, byID))
+    else
+      table.insert(missing, name)
+    end
   end
   for _, cat in ipairs(IRL.CategoryOrder) do
     local gate = IRL.Gates[cat]
@@ -60,13 +94,14 @@ local function Verify()
   check(IRL.SpecialGates.training.heroTree)
   check(IRL.SpecialGates.balance.heroTree)
 
-  if #missing == 0 then
-    IRL.Print(string.format("All %d gate names found in your spellbook or talent trees.", total))
-  else
-    IRL.Print(string.format("%d of %d gate names not found%s:", #missing, total,
-      haveTalents and "" or " (talent data unavailable)"))
-    for _, n in ipairs(missing) do IRL.Print("  |cffff6040" .. n .. "|r") end
-    IRL.Print("Unlearned spells can show here at low level; rename entries in Data/Gates.lua if a name changed.")
+  IRL.Print(string.format("Level %s, spec %s, talents read from %s.",
+    tostring(UnitLevel("player")), tostring(IRL.CurrentSpecID() or "none"),
+    source or "|cffff6040nowhere (talent data unavailable)|r"))
+  IRL.Print(string.format("%d of %d gate names found.", found, total))
+  for _, line in ipairs(renamed) do IRL.Print("  |cffffd100" .. line .. "|r") end
+  for _, n in ipairs(missing) do IRL.Print("  |cffff6040Not found: " .. n .. "|r") end
+  if #renamed + #missing > 0 then
+    IRL.Print("Copy these lines to Claude so the gate table can be fixed.")
   end
 end
 

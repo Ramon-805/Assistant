@@ -3,19 +3,24 @@
 -- combat. Other unit tokens carry secret spellIDs and are never registered.
 local _, IRL = ...
 
+-- Current specialization ID, or nil (e.g. below level 10).
+function IRL.CurrentSpecID()
+  local getSpec = (C_SpecializationInfo and C_SpecializationInfo.GetSpecialization) or GetSpecialization
+  local getInfo = (C_SpecializationInfo and C_SpecializationInfo.GetSpecializationInfo) or GetSpecializationInfo
+  local index = getSpec and getSpec()
+  if not index or IRL.IsSecret(index) or not getInfo then return nil end
+  local specID = getInfo(index)
+  if not specID or IRL.IsSecret(specID) then return nil end
+  return specID
+end
+
 -- Is this character subject to the gate table? Build 1: monks, except the
 -- specs in Config.exemptSpecs (low-level monks with no spec are enforced).
 function IRL.IsEnforced()
   local _, class = UnitClass("player")
   if class ~= "MONK" then return false end
-  local getSpec = (C_SpecializationInfo and C_SpecializationInfo.GetSpecialization) or GetSpecialization
-  local getInfo = (C_SpecializationInfo and C_SpecializationInfo.GetSpecializationInfo) or GetSpecializationInfo
-  local index = getSpec and getSpec()
-  if index and not IRL.IsSecret(index) and getInfo then
-    local specID = getInfo(index)
-    if specID and not IRL.IsSecret(specID) and IRL.Config.exemptSpecs[specID] then return false end
-  end
-  return true
+  local specID = IRL.CurrentSpecID()
+  return not (specID and IRL.Config.exemptSpecs[specID])
 end
 
 -- Spell name for an ID, or nil if unreadable.
