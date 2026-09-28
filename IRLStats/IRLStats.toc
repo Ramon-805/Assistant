@@ -1,32 +1,30 @@
 ## Interface: 120100
-## Title: IRL Stats
-## Notes: Gates monk abilities and talents behind real-life fitness milestones. Flags, never blocks.
+## Title: Gymlocke (IRL Stats)
+## Notes: Gymlocke rulebook for Windwalker monks: talents unlock as you pass calisthenics tests. Flags, never blocks.
 ## Author: Ray
-## Version: 0.1.0
+## Version: 0.2.0
 ## IconTexture: Interface\Icons\ClassIcon_Monk
 ## SavedVariables: IRLStatsDB
 ## SavedVariablesPerCharacter: IRLStatsCharDB
 
 Init.lua
 
+Data\Rulebook.lua
 Data\Tests.lua
-Data\Gates.lua
-Data\Norms.lua
 
 Core\Units.lua
-Core\Milestones.lua
-Core\Streaks.lua
-Core\Gates.lua
+Core\Rules.lua
 Core\DB.lua
 
 Detect\Flags.lua
 UI\Widgets.lua
 Detect\Casts.lua
 Detect\Talents.lua
+Detect\Flying.lua
 
 UI\MainFrame.lua
-UI\GoalsTab.lua
-UI\TodayTab.lua
+UI\RankTab.lua
+UI\DisciplinesTab.lua
 UI\FlagsTab.lua
 UI\Wizard.lua
 UI\Overlays.lua

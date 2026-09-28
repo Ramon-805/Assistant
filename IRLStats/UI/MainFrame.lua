@@ -1,5 +1,5 @@
 -- The /irl window: a portrait frame styled like the character pane, with
--- Goals, Today and Flags tabs. Each tab registers a page builder with
+-- Rank, Disciplines and Flags tabs. Each tab registers a page builder with
 -- UI.RegisterPage(name, build); a page exposes :Refresh().
 local _, IRL = ...
 local UI = IRL.UI
@@ -37,13 +37,13 @@ local function Build()
   f:SetScript("OnDragStop", f.StopMovingOrSizing)
   tinsert(UISpecialFrames, "IRLStatsFrame")
 
-  if f.SetTitle then f:SetTitle("IRL Stats") elseif f.TitleText then f.TitleText:SetText("IRL Stats") end
+  if f.SetTitle then f:SetTitle("Gymlocke") elseif f.TitleText then f.TitleText:SetText("Gymlocke") end
   if f.SetPortraitToUnit then f:SetPortraitToUnit("player") end
 
   f.status = UI.Text(f, "GameFontHighlightSmall")
   f.status:SetPoint("TOPLEFT", 70, -34)
 
-  f.setup = UI.Button(f, "Setup wizard", 110, 22, function() IRL.UI.ShowWizard() end)
+  f.setup = UI.Button(f, "Test Day / retest", 130, 22, function() IRL.UI.ShowWizard() end)
   f.setup:SetPoint("TOPRIGHT", -12, -28)
 
   f.inset = CreateFrame("Frame", nil, f, "InsetFrameTemplate")
@@ -87,7 +87,7 @@ function UI.RefreshMain()
   end
 end
 
--- tab: optional page name ("Goals", "Today", "Flags")
+-- tab: optional page name ("Rank", "Disciplines", "Flags")
 function IRL.ToggleMain(tab)
   main = main or Build()
   local index

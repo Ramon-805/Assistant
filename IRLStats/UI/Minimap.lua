@@ -1,4 +1,4 @@
--- Minimap button: left-click opens /irl, right-click opens the Today tab,
+-- Minimap button: left-click opens /irl, right-click opens Disciplines,
 -- drag to move around the minimap edge.
 local _, IRL = ...
 
@@ -44,13 +44,13 @@ function IRL.CreateMinimapButton()
   end)
   b:SetScript("OnDragStop", function(self) self:SetScript("OnUpdate", nil) end)
   b:SetScript("OnClick", function(_, button)
-    if button == "RightButton" then IRL.ToggleMain("Today") else IRL.ToggleMain() end
+    if button == "RightButton" then IRL.ToggleMain("Disciplines") else IRL.ToggleMain() end
   end)
   b:SetScript("OnEnter", function(self)
     GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-    GameTooltip:SetText("IRL Stats", 1, 1, 1)
-    GameTooltip:AddLine("Left-click: goals and flags", 0.8, 0.8, 0.8)
-    GameTooltip:AddLine("Right-click: today's check-ins", 0.8, 0.8, 0.8)
+    GameTooltip:SetText("Gymlocke", 1, 1, 1)
+    GameTooltip:AddLine("Left-click: rank and gates", 0.8, 0.8, 0.8)
+    GameTooltip:AddLine("Right-click: disciplines", 0.8, 0.8, 0.8)
     GameTooltip:Show()
   end)
   b:SetScript("OnLeave", GameTooltip_Hide)

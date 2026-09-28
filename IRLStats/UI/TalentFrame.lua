@@ -1,7 +1,8 @@
 -- Locked talents view: red tint and requirement tooltips on talent-frame
--- buttons (class, spec and hero talents). The talent UI loads on demand, so
--- this hooks in when Blizzard_PlayerSpells loads. Only textures and script
--- hooks are added; no Blizzard fields are written.
+-- buttons. Unselected nodes are tinted too, so closed tree sections show at
+-- a glance. The talent UI loads on demand, so this hooks in when
+-- Blizzard_PlayerSpells loads. Only textures and script hooks are added; no
+-- Blizzard fields are written.
 local _, IRL = ...
 
 local tints = setmetatable({}, { __mode = "k" })
@@ -14,33 +15,23 @@ local function Call(obj, method)
   end
 end
 
--- The gate (and active rank) behind a talent button, or nil.
-local function ButtonGate(button)
+-- Evaluation for the node behind a button, at its current rank (or rank 1).
+local function ButtonResult(button)
   if not IRL.state then return nil end
   local node = Call(button, "GetNodeInfo")
-  local rank = node and node.activeRank or 0
-  if node and node.subTreeID then
-    local configID = C_ClassTalents.GetActiveConfigID()
-    local info = configID and C_Traits.GetSubTreeInfo(configID, node.subTreeID)
-    local tree = info and IRL.state.heroTrees[info.name]
-    if tree then return tree, rank end
-  end
+  local nodeID = Call(button, "GetNodeID") or (node and node.ID)
+  local meta = nodeID and IRL.nodeMetaByID[nodeID]
+  if not meta then return nil end
+  local rank = math.max(node and node.activeRank or 0, 1)
   local name = IRL.SpellName(Call(button, "GetSpellID"))
-  if not name then return nil end
-  return IRL.FindGate(name), rank
-end
-
-local function IsLocked(gate, rank)
-  local apex = IRL.state.apex[gate.name]
-  if apex then return apex.unlockedRanks == 0 or rank > apex.unlockedRanks end
-  return not gate.unlocked
+  return IRL.EvaluateMeta(meta, rank, name or meta.name)
 end
 
 local function OnEnter(button)
   if not IRL.enforced then return end
-  local gate, rank = ButtonGate(button)
-  if gate and GameTooltip:IsOwned(button) then
-    IRL.AppendGateTooltip(GameTooltip, gate, rank)
+  local result = ButtonResult(button)
+  if result and GameTooltip:IsOwned(button) then
+    IRL.AppendGateTooltip(GameTooltip, result)
     GameTooltip:Show()
   end
 end
@@ -50,8 +41,8 @@ local function Refresh()
   local tf = PlayerSpellsFrame and PlayerSpellsFrame.TalentsFrame
   if not tf or not tf:IsVisible() or not tf.EnumerateAllTalentButtons then return end
   for button in tf:EnumerateAllTalentButtons() do
-    local gate, rank = ButtonGate(button)
-    local locked = IRL.enforced and gate ~= nil and IsLocked(gate, rank)
+    local result = IRL.enforced and ButtonResult(button)
+    local locked = result and not result.unlocked
     local tex = tints[button]
     if locked and not tex then
       tex = button:CreateTexture(nil, "OVERLAY", nil, 7)
@@ -60,7 +51,7 @@ local function Refresh()
       tex:SetColorTexture(1, 0, 0, 0.4)
       tints[button] = tex
     end
-    if tex then tex:SetShown(locked) end
+    if tex then tex:SetShown(locked and true or false) end
     if not hooked[button] then
       hooked[button] = true
       button:HookScript("OnEnter", OnEnter)
@@ -88,3 +79,4 @@ frame:RegisterEvent("TRAIT_NODE_CHANGED")
 frame:RegisterEvent("PLAYER_REGEN_ENABLED")
 frame:SetScript("OnEvent", Schedule)
 IRL.On("STATE_CHANGED", Schedule)
+IRL.On("LOADOUT_READ", Schedule)

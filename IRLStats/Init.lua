@@ -1,34 +1,15 @@
--- IRL Stats: namespace, tunable config and small shared utilities.
+-- Gymlocke (IRL Stats addon): namespace, config and small shared utilities.
+-- The rules themselves live in Data/Rulebook.lua.
 -- Everything in this file (and in Data/ and Core/) is plain Lua with no WoW
 -- API calls, so it can be unit-tested outside the game (see tests/run.lua).
 local ADDON, IRL = ...
 IRL.name = ADDON or "IRLStats"
 
 IRL.Config = {
-  -- Step per milestone, by category. Percent steps are applied to the
-  -- baseline in the "better" direction (up for higher-is-better tests, down
-  -- for times). Skill ladders (body control, mobility) always step one level.
-  steps = {
-    speed        = 0.015,
-    agility      = 0.015,
-    power        = 0.05,
-    body         = 1,
-    grip         = 0.10,
-    core         = 0.10,
-    conditioning = 0.05,
-    mobility     = 1,
-  },
-  -- Rep counts and timed holds climb faster than times and distances, so
-  -- they use this step instead of the category's.
-  countStep = 0.10,
-  reservedTopRungs = 3,   -- gates sit below these; apex ranks sit on them
-  maxRungs = 30,          -- far-away goals get bigger steps rather than 100 rungs
   flagCooldown = 60,      -- seconds; same locked spell flags at most once per window
-  maxStrikes = 3,         -- third missed day ends a streak
-  exercisesShown = 3,     -- exercises listed in a locked tooltip
   warningSound = true,
-  -- Build 1 is Windwalker only. These specs are never enforced so a
-  -- Brewmaster or Mistweaver alt isn't flagged before its gate table exists.
+  -- The rulebook covers Windwalker. These specs are never enforced so a
+  -- Brewmaster or Mistweaver alt isn't flagged before it has a rulebook.
   -- Low-level monks without a spec (and the "initial" spec) are enforced.
   exemptSpecs = { [268] = true, [270] = true },
 }
@@ -75,7 +56,7 @@ end
 
 function IRL.Print(msg)
   if DEFAULT_CHAT_FRAME then
-    DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99IRL Stats|r: " .. tostring(msg))
+    DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99Gymlocke|r: " .. tostring(msg))
   else
     print("IRL Stats: " .. tostring(msg))
   end

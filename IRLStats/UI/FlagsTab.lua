@@ -5,7 +5,8 @@ local UI = IRL.UI
 local function FlagLine(f)
   local when = date("%Y-%m-%d %H:%M", f.t)
   local what = f.name .. (f.detail and (" (" .. f.detail .. ")") or "")
-  local kind = f.kind == "talent" and "|cffc080fftalent|r" or "|cffff8040cast|r"
+  local kind = f.kind == "talent" and "|cffc080fftalent|r" or f.kind == "flight" and "|cff40c0ffflight|r"
+    or "|cffff8040cast|r"
   local where = (f.zone ~= "" and f.zone or "unknown zone") .. (f.combat and ", in combat" or "")
   return string.format("|cff999999%s|r  %s  %s  |cff999999- %s|r", when, kind, what, where)
 end
@@ -34,8 +35,8 @@ UI.RegisterPage("Flags", function(page)
 
     local lockedNow = {}
     if IRL.loadout and IRL.state then
-      for _, l in ipairs(IRL.LockedSelections(IRL.loadout.selected, IRL.loadout.heroTree)) do
-        table.insert(lockedNow, l.name .. (l.detail and (" " .. l.detail) or ""))
+      for _, l in ipairs(IRL.LockedSelections(IRL.loadout.selected)) do
+        table.insert(lockedNow, l.name .. (l.detail and (" (" .. l.detail .. ")") or ""))
       end
     end
     self.current:SetText(#lockedNow > 0

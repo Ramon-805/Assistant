@@ -167,6 +167,19 @@ function UI.ValueInput(parent, width)
 end
 
 --------------------------------------------------------------------------
+-- "No video, no credit" confirmation: a checkbox with its own label.
+--------------------------------------------------------------------------
+UI.NO_VIDEO = "No video, no credit: film it uncut with a timer visible."
+
+function UI.VideoCheck(parent)
+  local c = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
+  c:SetSize(24, 24)
+  c.label = UI.Text(c, "GameFontHighlightSmall", "Filmed uncut, timer visible, saved in today's folder")
+  c.label:SetPoint("LEFT", c, "RIGHT", 2, 0)
+  return c
+end
+
+--------------------------------------------------------------------------
 -- Prompt dialog: UI.Prompt{ title, text, test, value, onAccept = fn(v) }
 --------------------------------------------------------------------------
 local prompt
@@ -192,12 +205,15 @@ local function BuildPrompt()
   f.how:SetWidth(308)
   f.input = UI.ValueInput(f, 300)
   f.input:SetPoint("TOPLEFT", f.how, "BOTTOMLEFT", -2, -8)
+  f.video = UI.VideoCheck(f)
+  f.video:SetPoint("TOPLEFT", f.input, "BOTTOMLEFT", 0, -4)
   f.error = UI.Text(f, "GameFontRedSmall")
-  f.error:SetPoint("TOPLEFT", f.input, "BOTTOMLEFT", 2, -6)
+  f.error:SetPoint("TOPLEFT", f.video, "BOTTOMLEFT", 2, -4)
 
   local function accept()
     local v, err = f.input:GetValue()
     if not v then f.error:SetText(err) return end
+    if f.video:IsShown() and not f.video:GetChecked() then f.error:SetText(UI.NO_VIDEO) return end
     f:Hide()
     if f.onAccept then f.onAccept(v) end
   end
@@ -212,12 +228,15 @@ end
 
 function UI.Prompt(opts)
   prompt = prompt or BuildPrompt()
-  prompt.title:SetText(opts.title or "IRL Stats")
+  prompt.title:SetText(opts.title or "Gymlocke")
   prompt.text:SetText(opts.text or "")
   local how = opts.showHow and IRL.Tests[opts.test].how
   prompt.how:SetText(how and ("How: " .. how) or "")
   -- Grow to fit the instructions: title, text, how, input, error, buttons.
-  prompt:SetHeight(130 + prompt.text:GetStringHeight() + (how and prompt.how:GetStringHeight() or 0))
+  prompt.video:SetShown(opts.requireVideo and true or false)
+  prompt.video:SetChecked(false)
+  prompt:SetHeight(130 + prompt.text:GetStringHeight() + (how and prompt.how:GetStringHeight() or 0)
+    + (opts.requireVideo and 26 or 0))
   prompt.error:SetText("")
   prompt.input:SetTest(opts.test)
   prompt.input:SetValue(opts.value)

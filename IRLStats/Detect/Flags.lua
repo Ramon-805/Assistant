@@ -37,22 +37,10 @@ function IRL.AddFlag(name, kind, detail)
 end
 
 -- Text for the on-screen warning / chat, e.g.
--- "Locked: Tiger's Lust — next milestone 4.95 s 40-yard dash".
+-- "Locked: Fists of Fury - needs Key: Push Silver (35 push-ups)".
 function IRL.LockedMessage(gate)
-  local msg = "Locked: " .. gate.name
-  if gate.kind == "milestone" or gate.kind == "apex" then
-    local cs = IRL.state.categories[gate.category]
-    local c = IRL.db.categories[gate.category]
-    if cs and cs.nextValue and c and c.test then
-      msg = msg .. " - next milestone " .. IRL.Units.Format(c.test, cs.nextValue) .. " "
-        .. IRL.Tests[c.test].label:gsub(" %(.*%)$", "")
-    end
-  elseif gate.kind == "habit" then
-    msg = msg .. " - do today's check-in (/irl)"
-  elseif gate.kind == "pt" then
-    msg = msg .. " - log a mobility/PT session (/irl)"
-  elseif gate.kind == "unset" then
-    msg = msg .. " - set up " .. IRL.Categories[gate.category].label:lower() .. " in /irl"
-  end
-  return msg
+  local missing = gate.missing or {}
+  if #missing == 0 then return "Locked: " .. gate.name end
+  local more = #missing > 1 and string.format(" (+%d more, see tooltip)", #missing - 1) or ""
+  return "Locked: " .. gate.name .. " - needs " .. missing[1] .. more
 end

@@ -80,19 +80,14 @@ local function Verify()
       table.insert(missing, name)
     end
   end
-  for _, cat in ipairs(IRL.CategoryOrder) do
-    local gate = IRL.Gates[cat]
-    for _, n in ipairs(gate.abilities) do check(n) end
-    if gate.apex then
-      check(gate.apex.name)
-      for _, n in pairs(gate.apex.grants or {}) do check(n) end
-    end
+  local names = {}
+  for name in pairs(IRL.Keys) do table.insert(names, name) end
+  for _, list in ipairs({ IRL.MajorCooldowns, IRL.FortifyingUpgrades.extra, IRL.ApexNames,
+                          { "Shado-Pan", "Conduit of the Celestials" } }) do
+    for _, name in ipairs(list) do table.insert(names, name) end
   end
-  for _, key in ipairs({ "habit", "pt" }) do
-    for _, n in ipairs(IRL.SpecialGates[key].abilities) do check(n) end
-  end
-  check(IRL.SpecialGates.training.heroTree)
-  check(IRL.SpecialGates.balance.heroTree)
+  table.sort(names)
+  for _, name in ipairs(names) do check(name) end
 
   IRL.Print(string.format("Level %s, spec %s, talents read from %s.",
     tostring(UnitLevel("player")), tostring(IRL.CurrentSpecID() or "none"),
@@ -109,13 +104,10 @@ end
 -- Slash commands
 --------------------------------------------------------------------------
 local HELP = {
-  "/irl - open the character sheet (goals, today, flags)",
-  "/irl today | flags - open a tab",
-  "/irl setup - run the setup wizard",
-  "/irl checkin - took my supplements (daily habit)",
-  "/irl pt - did mobility/PT today",
-  "/irl trained - trained today",
-  "/irl verify - check gate names against your spells and talents",
+  "/irl - open the Gymlocke sheet (rank, disciplines, flags)",
+  "/irl rank | disciplines | flags - open a tab",
+  "/irl testday - run Test Day (log all six disciplines and baselines)",
+  "/irl verify - check rulebook talent names against your spells and talents",
   "/irl minimap - show/hide the minimap button",
 }
 
@@ -123,15 +115,9 @@ SLASH_IRLSTATS1 = "/irl"
 SLASH_IRLSTATS2 = "/irlstats"
 SlashCmdList.IRLSTATS = function(msg)
   local cmd = (msg or ""):lower():match("^%s*(%S*)")
-  if cmd == "" or cmd == "goals" then IRL.ToggleMain(cmd ~= "" and "Goals" or nil)
-  elseif cmd == "today" or cmd == "flags" then IRL.ToggleMain(cmd)
-  elseif cmd == "setup" then IRL.UI.ShowWizard()
-  elseif cmd == "checkin" then
-    IRL.Print(IRL.CheckIn() and "Checked in for today." or "Already checked in today.")
-  elseif cmd == "pt" then
-    IRL.Print(IRL.LogSession("pt") and "PT session logged." or "PT already logged today.")
-  elseif cmd == "trained" then
-    IRL.Print(IRL.LogSession("training") and "Training day logged." or "Training already logged today.")
+  if cmd == "" then IRL.ToggleMain()
+  elseif cmd == "rank" or cmd == "disciplines" or cmd == "flags" then IRL.ToggleMain(cmd)
+  elseif cmd == "testday" or cmd == "setup" then IRL.UI.ShowWizard()
   elseif cmd == "verify" then Verify()
   elseif cmd == "minimap" then
     IRL.db.minimap.hide = not IRL.db.minimap.hide
@@ -147,29 +133,23 @@ end
 local frame = CreateFrame("Frame")
 frame:RegisterEvent("ADDON_LOADED")
 frame:RegisterEvent("PLAYER_LOGIN")
+frame:RegisterEvent("PLAYER_LEVEL_UP")
 frame:SetScript("OnEvent", function(self, event, arg1)
   if event == "ADDON_LOADED" and arg1 == ADDON then
     IRL.InitDB()
     self:UnregisterEvent("ADDON_LOADED")
+  elseif event == "PLAYER_LEVEL_UP" then
+    C_Timer.After(0.5, function() IRL.Recompute("level") end) -- gates 4 and 5 are level-based
   elseif event == "PLAYER_LOGIN" then
     IRL.enforced = IRL.IsEnforced()
     IRL.Recompute("init")
     IRL.CreateMinimapButton()
     C_Timer.NewTicker(30, IRL.CheckDayRollover)
-    if not IRL.db.setupDone then
-      IRL.Print("Welcome! Let's set up your real-life stats. (/irl setup any time)")
+    if not IRL.Rules.TestDayDone(IRL.db) then
+      IRL.Print("Gymlocke: Test Day isn't done yet. Film all six disciplines, then log them. (/irl testday)")
       C_Timer.After(3, IRL.UI.ShowWizard)
-    else
-      for _, cat in ipairs(IRL.CategoryOrder) do
-        local test = IRL.db.categories[cat].test
-        if test and IRL.Tests[test].legacy then
-          IRL.Print(IRL.Categories[cat].label .. " uses the " .. IRL.Tests[test].label
-            .. ", which is no longer offered. Switch to an easier solo test from the ... menu in /irl.")
-        end
-      end
-    end
-    if IRL.db.setupDone and not IRL.enforced then
-      IRL.Print("Gates aren't enforced on this character (build 1 covers Windwalker monks).")
+    elseif not IRL.enforced then
+      IRL.Print("Gates aren't enforced on this character (the rulebook covers Windwalker monks).")
     end
   end
 end)
