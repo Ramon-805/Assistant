@@ -14,13 +14,11 @@ function IRL.CurrentSpecID()
   return specID
 end
 
--- Is this character subject to the gate table? Build 1: monks, except the
--- specs in Config.exemptSpecs (low-level monks with no spec are enforced).
+-- Is this character subject to a rulebook? Monks whose spec has one
+-- (Windwalker, Brewmaster); low-level monks with no spec use Windwalker's.
 function IRL.IsEnforced()
   local _, class = UnitClass("player")
-  if class ~= "MONK" then return false end
-  local specID = IRL.CurrentSpecID()
-  return not (specID and IRL.Config.exemptSpecs[specID])
+  return class == "MONK" and IRL.SpecHasRulebook()
 end
 
 -- Spell name for an ID, or nil if unreadable.

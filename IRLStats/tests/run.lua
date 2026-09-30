@@ -12,7 +12,8 @@ for _, f in ipairs({
 }) do load(f) end
 
 -- Minimal WoW stubs
-local clock, level = 1000, 90
+local clock, level, spec = 1000, 90, 269
+IRL.CurrentSpecID = function() return spec end
 function GetTime() return clock end
 function GetRealZoneText() return "Dornogal" end
 function UnitAffectingCombat() return true end
@@ -36,14 +37,14 @@ end
 local function fresh()
   IRLStatsDB, IRLStatsCharDB = nil, nil
   IRL.state, IRL.nodeMeta, IRL.lastFlagAt = nil, {}, {}
-  level = 90
+  level, spec = 90, 269
   IRL.InitDB()
   IRL.Recompute()
 end
 
 -- Log the same tier in every discipline, or a table { pull = 2, ... }.
 local function testDay(tiers)
-  for _, key in ipairs(IRL.DisciplineOrder) do
+  for _, key in ipairs(IRL.Rulebooks.windwalker.disciplineOrder) do
     IRL.LogDiscipline(key, type(tiers) == "table" and (tiers[key] or 0) or tiers)
   end
 end
@@ -166,9 +167,9 @@ test("ranks: Master needs Gold in 2 on top of Adept", function()
 end)
 
 test("supporting tests: % faster than baseline, rounded up", function()
-  local t = IRL.Rules.SupportTargets(480) -- 8:00 mile
+  local t = IRL.Rules.Targets(IRL.Supports.mile, 480) -- 8:00 mile
   eq(t[1], 480); eq(t[2], 456); eq(t[3], 432); eq(t[4], 408)
-  t = IRL.Rules.SupportTargets(250)
+  t = IRL.Rules.Targets(IRL.Supports.reaction, 250)
   eq(t[2], 238, "237.5 ms rounds up")
 end)
 
@@ -178,10 +179,10 @@ test("mile Silver unlocks Transcendence and flying", function()
   eq(IRL.state.flying, false)
   IRL.LogSupport("mile", 480)
   eq(IRL.db.supports.mile.baseline, 480)
-  eq(IRL.Rules.Tier(IRL.db, "mile"), 1, "matching baseline is Bronze")
+  eq(IRL.Rules.Tier(IRL.state.ctx, "mile"), 1, "matching baseline is Bronze")
   eq(IRL.FindGate("Transcendence").unlocked, false)
   local gained = IRL.LogSupport("mile", 455)
-  eq(IRL.Rules.Tier(IRL.db, "mile"), 2)
+  eq(IRL.Rules.Tier(IRL.state.ctx, "mile"), 2)
   eq(IRL.FindGate("Transcendence").unlocked, true)
   eq(IRL.state.flying, true)
   eq(table.concat(gained, ","):find("Flying") ~= nil, true)
@@ -203,7 +204,7 @@ test("failed retest drops the tier at once and opens a 7-day retry", function()
   local _, lost = IRL.LogDiscipline("pull", 1)
   eq(IRL.FindGate("Strike of the Windlord").unlocked, false)
   eq(IRL.state.open[2], false, "back below Silver in 2")
-  local e = IRL.db.disciplines.pull
+  local e = IRL.db.specs.windwalker.disciplines.pull
   eq(e.lostTier, 2)
   eq(IRL.Rules.RetryLeft(e, IRL.Today()), 7)
   eq(table.concat(lost, ","):find("Strike of the Windlord") ~= nil, true)
@@ -225,19 +226,32 @@ test("retest due 30 days after the last test", function()
   fresh()
   testDay(1)
   advanceDays(25)
-  eq(IRL.Rules.RetestDue(IRL.db.disciplines.pull, IRL.Today()), 5)
+  eq(IRL.Rules.RetestDue(IRL.db.specs.windwalker.disciplines.pull, IRL.Today()), 5)
   advanceDays(10)
-  eq(IRL.Rules.RetestDue(IRL.db.disciplines.pull, IRL.Today()), -5)
+  eq(IRL.Rules.RetestDue(IRL.db.specs.windwalker.disciplines.pull, IRL.Today()), -5)
+end)
+
+test("v2 Windwalker tiers move under specs.windwalker", function()
+  IRLStatsDB = { version = 2, disciplines = { pull = { tier = 3, lastDay = 5, history = {} } },
+                 supports = { mile = { baseline = 480, history = {} } } }
+  IRLStatsCharDB = nil
+  IRL.InitDB()
+  eq(IRLStatsDB.version, 3)
+  eq(IRLStatsDB.disciplines, nil)
+  eq(IRLStatsDB.specs.windwalker.disciplines.pull.tier, 3)
+  eq(IRLStatsDB.specs.windwalker.disciplines.push.tier, 0, "missing disciplines filled in")
+  eq(IRLStatsDB.specs.brewmaster.disciplines.brace.baseline, nil)
+  eq(IRLStatsDB.supports.mile.baseline, 480, "supporting tests stay shared")
 end)
 
 test("v1 saved data is archived, not lost", function()
   IRLStatsDB = { version = 1, categories = { grip = { pr = 40 } }, streaks = {}, habit = {}, setupDone = true }
   IRLStatsCharDB = nil
   IRL.InitDB()
-  eq(IRLStatsDB.version, 2)
+  eq(IRLStatsDB.version, 3)
   eq(IRLStatsDB.legacyV1.categories.grip.pr, 40)
   eq(IRLStatsDB.categories, nil)
-  eq(IRLStatsDB.disciplines.pull.tier, 0)
+  eq(IRLStatsDB.specs.windwalker.disciplines.pull.tier, 0)
 end)
 
 test("tiers are account-wide; flags are per character", function()
@@ -246,7 +260,7 @@ test("tiers are account-wide; flags are per character", function()
   IRL.AddFlag("Fists of Fury", "cast")
   IRLStatsCharDB = nil
   IRL.InitDB()
-  eq(IRL.db.disciplines.push.tier, 1)
+  eq(IRL.db.specs.windwalker.disciplines.push.tier, 1)
   eq(#IRL.char.flags, 0)
 end)
 
@@ -274,6 +288,135 @@ test("tree meta overrides rule-only judgement for the same name", function()
   local g = IRL.FindGate("Some Capstone")
   eq(g.unlocked, false)
   eq(g.kind, "talent")
+end)
+
+
+------------------------------------------------------------------------
+-- Brewmaster
+------------------------------------------------------------------------
+local BREW = { "endurance", "brace", "hang", "power", "mobility", "balance" }
+local BASE = { endurance = 60, brace = 60, hang = 40, power = 30, mobility = 60, balance = 20 }
+
+local function brewmaster()
+  fresh()
+  spec = 268
+  IRL.Recompute()
+  eq(IRL.rb.key, "brewmaster")
+end
+
+-- Test Day at BASE, then a retest at baseline * (1 + bump[key]) where given.
+local function brewDay(bump)
+  for _, key in ipairs(BREW) do IRL.LogMeasured(key, BASE[key]) end
+  for key, b in pairs(bump or {}) do IRL.LogMeasured(key, math.ceil(BASE[key] * (1 + b))) end
+end
+
+test("brewmaster: the spec picks the rulebook", function()
+  fresh()
+  eq(IRL.rb.key, "windwalker")
+  spec = 268; IRL.Recompute()
+  eq(IRL.rb.key, "brewmaster")
+  spec = 270; IRL.Recompute()
+  eq(IRL.rb.key, "windwalker", "a spec without a rulebook falls back")
+  eq(IRL.SpecHasRulebook(), false)
+end)
+
+test("brewmaster: percent tiers are +15/30/50% over baseline, rounded up", function()
+  local t = IRL.Rules.Targets(IRL.Rulebooks.brewmaster.disciplines.brace, 60)
+  eq(t[1], 60); eq(t[2], 69); eq(t[3], 78); eq(t[4], 90)
+  t = IRL.Rules.Targets(IRL.Rulebooks.brewmaster.disciplines.endurance, 47)
+  eq(t[2], 55, "54.05 rounds up to 55")
+end)
+
+test("brewmaster: Test Day sets baselines and opens Gates 0 and 1", function()
+  brewmaster()
+  brewDay()
+  local ctx = IRL.state.ctx
+  eq(IRL.db.specs.brewmaster.disciplines.brace.baseline, 60)
+  eq(IRL.Rules.Tier(ctx, "brace"), 1, "baseline is Bronze")
+  eq(IRL.state.open[1], true)
+  eq(IRL.state.open[2], false)
+end)
+
+test("brewmaster: a later, better result climbs; the baseline stays fixed", function()
+  brewmaster()
+  brewDay()
+  IRL.LogMeasured("brace", 80)
+  local e = IRL.db.specs.brewmaster.disciplines.brace
+  eq(e.baseline, 60)
+  eq(IRL.Rules.Tier(IRL.state.ctx, "brace"), 3, "80 s >= 78 s is Gold")
+end)
+
+test("brewmaster: Silver in 4 opens Gate 3 and Adept", function()
+  brewmaster()
+  brewDay({ endurance = 0.15, brace = 0.15, hang = 0.15, power = 0.15 })
+  eq(IRL.state.open[3], true)
+  eq(IRL.state.rank, 2)
+end)
+
+test("brewmaster: Niuzao needs Gate 2 and Endurance Gold", function()
+  brewmaster()
+  brewDay({ endurance = 0.15, brace = 0.15 })
+  local g = IRL.FindGate("Invoke Niuzao, the Black Ox")
+  eq(g.unlocked, false)
+  eq(g.missing[1]:find("^Key: Endurance Gold %(%+30%% over your baseline: 78%)") ~= nil, true, g.missing[1])
+  IRL.LogMeasured("endurance", 78)
+  eq(IRL.FindGate("Invoke Niuzao, the Black Ox").unlocked, true)
+end)
+
+test("brewmaster: shared class talents use Brewmaster keys", function()
+  brewmaster()
+  brewDay({ power = 0.15 })
+  eq(IRL.FindGate("Tiger's Lust").unlocked, true, "Power Silver, not Windwalker Legs")
+  eq(IRL.FindGate("Chi Torpedo").unlocked, false, "needs Mobility Silver")
+end)
+
+test("brewmaster: pattern keys cover brew and stagger upgrades", function()
+  brewmaster()
+  brewDay({ endurance = 0.15, brace = 0.15, hang = 0.15, power = 0.15 })
+  eq(node("Celestial Brew", { section = 1 }).unlocked, true, "base spell isn't an upgrade")
+  eq(node("Celestial Infusion", { section = 1 }).unlocked, true, "Brace Silver + Gate 3")
+  eq(node("Purified Chi", { section = 1 }).unlocked, true, "Hang Silver")
+  eq(node("Staggering Strikes", { section = 1 }).unlocked, true)
+  IRL.LogMeasured("hang", 40)
+  eq(node("Purified Chi", { section = 1 }).unlocked, false, "Hang back to Bronze")
+end)
+
+test("brewmaster: hero Gate 4 needs Mobility Silver", function()
+  brewmaster()
+  brewDay({ endurance = 0.15, brace = 0.15, hang = 0.15, power = 0.15 })
+  eq(IRL.state.open[4], false)
+  IRL.LogMeasured("mobility", 69)
+  eq(IRL.state.open[4], true)
+  eq(IRL.rb.gateDefs[4].requirement, "Level 71 + Mobility Silver")
+end)
+
+test("brewmaster: apex is Bring Me Another", function()
+  brewmaster()
+  brewDay({ endurance = 0.30, brace = 0.15, hang = 0.15, power = 0.15, mobility = 0.15 })
+  eq(node("Bring Me Another", { isApex = true, rank = 1 }).unlocked, true)
+  eq(node("Bring Me Another", { isApex = true, rank = 2 }).unlocked, false, "needs Gold in 2")
+end)
+
+test("specs keep separate ladders; supporting tests are shared", function()
+  fresh()
+  testDay({ pull = 2, push = 2, press = 2, legs = 2, core = 1, flex = 1 })
+  IRL.LogSupport("mile", 480); IRL.LogSupport("mile", 450)
+  eq(IRL.state.rank, 2, "Windwalker Adept")
+  eq(IRL.state.flying, true)
+  spec = 268; IRL.Recompute()
+  eq(IRL.state.rank, 1, "Brewmaster starts Solo Only")
+  eq(IRL.state.open[0], false, "no Brewmaster Test Day yet")
+  eq(IRL.state.flying, true, "Mile Silver counts on every spec")
+  spec = 269; IRL.Recompute()
+  eq(IRL.state.rank, 2, "switching back keeps Windwalker's rank")
+end)
+
+test("a spec switch doesn't toast", function()
+  fresh()
+  testDay(1)
+  spec = 268
+  local gained, lost = IRL.Recompute()
+  eq(#gained + #lost, 0)
 end)
 
 print(string.format("\n%d passed, %d failed", passed, failed))

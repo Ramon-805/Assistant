@@ -1,5 +1,5 @@
--- Rank tab: current rank, the gate map (what each gate needs, your progress,
--- what it opens) and the content ceilings table.
+-- Rank tab: the viewed spec's rank, its gate map (what each gate needs, your
+-- progress, what it opens) and the content ceilings table.
 local _, IRL = ...
 local UI = IRL.UI
 local R = IRL.Rules
@@ -8,33 +8,33 @@ local function Color(hex, text) return "|c" .. hex .. text .. "|r" end
 local GREEN, RED, GREY, GOLD = "ff4dff4d", "ffff6040", "ff999999", "ffffd100"
 
 -- Progress toward a gate's own condition, e.g. "4/6 at Bronze".
-local function GateProgress(g)
-  local db, def = IRL.db, IRL.GateDefs[g]
+local function GateProgress(ctx, g)
+  local rb, def = ctx.rb, ctx.rb.gateDefs[g]
   local parts = {}
   if def.testDay then
     local n = 0
-    for _, key in ipairs(IRL.DisciplineOrder) do if db.disciplines[key].lastDay then n = n + 1 end end
+    for _, key in ipairs(rb.disciplineOrder) do if ctx.disc[key].lastDay then n = n + 1 end end
     table.insert(parts, n .. "/6 filmed")
   end
   if def.need then
-    table.insert(parts, string.format("%d/%d at %s", math.min(R.CountAtLeast(db, def.need[1]), def.need[2]),
+    table.insert(parts, string.format("%d/%d at %s", math.min(R.CountAtLeast(ctx, def.need[1]), def.need[2]),
       def.need[2], IRL.Tiers[def.need[1]]))
   end
   if def.level then
     table.insert(parts, string.format("level %d/%d", math.min(IRL.PlayerLevelSafe(), def.level), def.level))
   end
   if def.key then
-    table.insert(parts, IRL.Disciplines[def.key[1]].label .. " " .. R.TierName(R.Tier(db, def.key[1])))
+    table.insert(parts, rb.disciplines[def.key[1]].label .. " " .. R.TierName(R.Tier(ctx, def.key[1])))
   end
   return table.concat(parts, ", ")
 end
 
-local function NextRankText(rank)
-  local nextDef = IRL.Ranks[rank + 1]
+local function NextRankText(ctx)
+  local nextDef = IRL.Ranks[ctx.rank + 1]
   if not nextDef then return Color(GOLD, "Top rank reached.") end
   local need = {}
-  if nextDef.gate and not IRL.state.open[nextDef.gate] then table.insert(need, R.GateText(nextDef.gate)) end
-  if nextDef.need then table.insert(need, R.NeedText(nextDef.need)) end
+  if nextDef.gate and not ctx.open[nextDef.gate] then table.insert(need, R.GateText(ctx.rb, nextDef.gate)) end
+  if nextDef.need then table.insert(need, R.NeedText(ctx.rb, nextDef.need)) end
   return "Next: " .. nextDef.name .. " - needs " .. table.concat(need, " + ")
 end
 
@@ -44,8 +44,8 @@ UI.RegisterPage("Rank", function(page)
   page.next = UI.Text(page, "GameFontHighlight")
   page.next:SetPoint("TOPLEFT", page.rank, "BOTTOMLEFT", 0, -6)
 
-  local header = UI.Text(page, "GameFontNormal", "Windwalker gate map")
-  header:SetPoint("TOPLEFT", 14, -70)
+  page.header = UI.Text(page, "GameFontNormal")
+  page.header:SetPoint("TOPLEFT", 14, -70)
   page.gates = {}
   for g = 0, IRL.GateCount do
     local row = CreateFrame("Frame", nil, page)
@@ -86,21 +86,23 @@ UI.RegisterPage("Rank", function(page)
     page.ceilings[i] = cells
   end
   page.note = UI.Text(page, "GameFontDisableSmall",
-    "Once you're Adept, content above your rank can be played with friends but earns no gymlocke credit.")
+    "Each spec has its own rank. Once you're Adept, content above your rank can be played with friends but earns no gymlocke credit.")
   page.note:SetPoint("TOPLEFT", 16, -432)
+  page.note:SetWidth(740)
 
   function page:Refresh()
-    local state = IRL.state
-    local rank = state.rank
-    self.rank:SetText("Rank: " .. Color(GOLD, IRL.Ranks[rank].name))
-    self.next:SetText(NextRankText(rank))
+    local ctx = IRL.ViewContext()
+    local rb, rank = ctx.rb, ctx.rank
+    self.rank:SetText(rb.label .. " rank: " .. Color(GOLD, IRL.Ranks[rank].name))
+    self.next:SetText(NextRankText(ctx))
+    self.header:SetText(rb.label .. " gate map")
     for g = 0, IRL.GateCount do
-      local row, def = self.gates[g], IRL.GateDefs[g]
-      local open = state.open[g]
-      local blocked = g > 0 and not state.open[g - 1]
+      local row, def = self.gates[g], rb.gateDefs[g]
+      local open = ctx.open[g]
+      local blocked = g > 0 and not ctx.open[g - 1]
       row.status:SetText(open and Color(GREEN, "OPEN") or Color(blocked and GREY or RED, "LOCKED"))
       row.name:SetText(string.format("Gate %d - %s", g, def.name))
-      row.need:SetText(def.requirement .. (open and "" or ("  |cff999999(" .. GateProgress(g) .. ")|r")))
+      row.need:SetText(def.requirement .. (open and "" or ("  |cff999999(" .. GateProgress(ctx, g) .. ")|r")))
       row.opens:SetText((open and "" or "|cff999999") .. def.opens .. (open and "" or "|r"))
     end
     for i, cells in ipairs(self.ceilings) do

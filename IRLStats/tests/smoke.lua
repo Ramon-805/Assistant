@@ -90,7 +90,8 @@ function UnitClass() return "Monk", "MONK" end
 function UnitName() return "Sportacus" end
 function UnitLevel() return level end
 function IsFlying() return flying end
-C_SpecializationInfo = { GetSpecialization = function() return 3 end, GetSpecializationInfo = function() return 269 end }
+local specID = 269
+C_SpecializationInfo = { GetSpecialization = function() return 3 end, GetSpecializationInfo = function() return specID end }
 local clock = 0
 function GetTime() return clock end
 function GetRealZoneText() return "Dornogal" end
@@ -221,7 +222,7 @@ check(wiz.step == 2 and wiz.error:GetText():find("No video"), "no video, no cred
 page.video:SetChecked(true)
 Fire(wiz.next, "OnClick")
 for i = 2, 6 do
-  local key = IRL.DisciplineOrder[i]
+  local key = IRL.Rulebooks.windwalker.disciplineOrder[i]
   page.input:SetValue(tiers[key] + 1)
   page.video:SetChecked(true)
   Fire(wiz.next, "OnClick")
@@ -234,7 +235,7 @@ local beforeFinish = #IRL.char.flags
 Fire(wiz.next, "OnClick")
 RunTimers()
 check(not wiz:IsShown(), "wizard finishes")
-check(IRL.Rules.TestDayDone(IRL.db) and IRL.db.disciplines.core.tier == 1, "Test Day logged")
+check(IRL.Rules.TestDayDone(IRL.state.ctx) and IRL.db.specs.windwalker.disciplines.core.tier == 1, "Test Day logged")
 check(IRL.db.supports.mile.baseline == 480, "mile baseline 8:00")
 check(IRL.state.rank == 2, "rank Adept (Silver in 5)")
 check(IRL.FindGate("Fists of Fury").unlocked, "Fists of Fury unlocked (Gate 1 + Push Silver)")
@@ -289,7 +290,7 @@ Fire(prompt.ok, "OnClick")
 check(prompt.error:GetText():find("No video"), "log dialog requires the video checkbox")
 prompt.video:SetChecked(true)
 Fire(prompt.ok, "OnClick")
-check(IRL.db.disciplines.pull.tier == 1, "Pull dropped to Bronze")
+check(IRL.db.specs.windwalker.disciplines.pull.tier == 1, "Pull dropped to Bronze")
 check(disc.rows[1].retest:GetText():find("Lost Silver"), "retry window shown: " .. disc.rows[1].retest:GetText())
 check(not IRL.FindGate("Strike of the Windlord").unlocked, "Strike of the Windlord relocked")
 
@@ -315,6 +316,75 @@ for _, cmd in ipairs({ "", "rank", "disciplines", "flags", "verify", "minimap", 
 end
 RunTimers()
 check(true, "all slash commands run")
+
+------------------------------------------------------------------------
+-- Brewmaster: switch spec, separate ladder, measured Test Day
+------------------------------------------------------------------------
+if wiz:IsShown() then wiz:Hide() end
+specID = 268
+for _, n in pairs(nodes) do n.activeRank = 0 end -- fresh Brewmaster loadout
+FireEvent("PLAYER_SPECIALIZATION_CHANGED", "player")
+RunTimers()
+check(IRL.rb.key == "brewmaster" and IRL.enforced, "Brewmaster rulebook active and enforced")
+check(IRL.state.rank == 1 and not IRL.state.open[0], "Brewmaster starts at Solo Only with no Test Day")
+check(IRL.state.flying, "Mile Silver still allows flying on Brewmaster")
+check(table.concat(chat, "|"):find("Brewmaster has its own ladder"), "spec switch explains the new ladder")
+check(main.spec:GetText():find("Showing: Brewmaster"), "window follows the new spec: " .. main.spec:GetText())
+
+-- Measured Test Day
+IRL.UI.ShowWizard()
+check(wiz.title:GetText():find("Brewmaster Test Day"), "wizard runs for Brewmaster")
+Fire(wiz.next, "OnClick")
+local brewBase = { endurance = "60", brace = "1:00", hang = "40", power = "30", mobility = "60", balance = "20" }
+for i = 1, 6 do
+  local key = IRL.Rulebooks.brewmaster.disciplineOrder[i]
+  check(page.input.edit:IsShown(), key .. " takes a number")
+  page.input.edit:SetText(brewBase[key])
+  page.video:SetChecked(true)
+  Fire(wiz.next, "OnClick")
+end
+Fire(wiz.skip, "OnClick") -- reaction
+Fire(wiz.skip, "OnClick") -- mile (already has a baseline)
+RunTimers()
+local brace = IRL.db.specs.brewmaster.disciplines.brace
+check(brace.baseline == 60, "brace baseline 1:00 stored as 60 s")
+check(IRL.state.open[1] and not IRL.state.open[2], "Brewmaster Gates 0-1 open after Test Day")
+check(IRL.db.specs.windwalker.disciplines.push.tier == 2, "Windwalker ladder untouched")
+
+-- Disciplines tab shows the Brewmaster six with targets
+Fire(main.Tabs[2], "OnClick")
+local brewRow = disc.rows[2]
+check(brewRow.name:GetText() == "Brace", "Disciplines tab shows Brewmaster rows")
+check(brewRow.nextText:GetText():find("Silver at 1:09"), "next target from baseline: " .. brewRow.nextText:GetText())
+check(brewRow.keys:GetText():find("Celestial Brew upgrades"), "row lists pattern keys: " .. brewRow.keys:GetText())
+
+-- Log a measured retest through the dialog
+Fire(brewRow.log, "OnClick")
+prompt.input.edit:SetText("1:10")
+prompt.video:SetChecked(true)
+Fire(prompt.ok, "OnClick")
+check(brace.value == 70 and IRL.Rules.Tier(IRL.state.ctx, "brace") == 2, "brace 1:10 is Silver")
+
+-- The switcher shows Windwalker without changing the active rulebook
+Fire(main.spec, "OnClick")
+for _, item in ipairs(menuItems) do if item.text:find("^Windwalker") then item.cb() end end
+check(IRL.ViewRulebook().key == "windwalker" and IRL.rb.key == "brewmaster", "view Windwalker while playing Brewmaster")
+check(disc.rows[1].name:GetText() == "Pull", "rows switch with the view")
+Fire(main.Tabs[1], "OnClick")
+check(rank.rank:GetText():find("Windwalker rank") and rank.rank:GetText():find("Adept"), "rank tab shows the viewed spec")
+
+-- Verify checks the active spec's names
+chat = {}
+SlashCmdList.IRLSTATS("verify")
+local out = table.concat(chat, "\n")
+check(out:find("Brewmaster rulebook") and out:find("Not found: Invoke Niuzao"), "verify lists Brewmaster names")
+check(not out:find("Fists of Fury"), "verify skips Windwalker-only names")
+
+-- Mistweaver has no rulebook
+specID = 270
+FireEvent("PLAYER_SPECIALIZATION_CHANGED", "player")
+RunTimers()
+check(not IRL.enforced, "Mistweaver isn't enforced")
 
 print(failures == 0 and "\nsmoke OK" or ("\n" .. failures .. " smoke failures"))
 os.exit(failures == 0 and 0 or 1)

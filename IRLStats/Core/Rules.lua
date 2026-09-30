@@ -1,10 +1,13 @@
 -- The Gymlocke rules engine (pure Lua, no WoW API). Turns saved tiers and
--- the character level into open gates and a rank, and judges any talent or
--- spell: unlocked or not, with each requirement and whether it's met.
+-- the character level into open gates and a rank for one rulebook (spec),
+-- and judges any talent or spell: unlocked or not, with each requirement and
+-- whether it's met.
 --
 -- Saved shape (see Core/DB.lua):
---   db.disciplines[key] = { tier, last, lastDay, lostTier, retryUntil, history }
---   db.supports[key]    = { baseline, value, last, lastDay, lostTier, retryUntil, history }
+--   db.specs[rulebook].disciplines[key]
+--       landmark: { tier, last, lastDay, lostTier, retryUntil, history }
+--       measured: { baseline, value, last, lastDay, lostTier, retryUntil, history }
+--   db.supports[key] = measured, shared by every spec
 local _, IRL = ...
 
 local R = {}
@@ -13,51 +16,66 @@ IRL.Rules = R
 local function lower(s) return type(s) == "string" and s:lower() or nil end
 
 --------------------------------------------------------------------------
--- Tiers
+-- Measured tiers: percent over (or under, for times) your baseline
 --------------------------------------------------------------------------
 
--- Supporting-test targets for tiers 1..4: Bronze matches the baseline, each
--- tier after is a percentage faster, rounded up to the next whole unit.
-function R.SupportTargets(baseline)
+-- Targets for tiers 1..4. Bronze matches the baseline; targets round up to
+-- the next whole unit.
+function R.Targets(def, baseline)
   local targets = {}
-  for i, p in ipairs(IRL.SupportTierPercent) do
-    targets[i] = math.ceil(baseline * (1 - p) - 1e-9)
+  for i, p in ipairs(def.percents or IRL.PercentTiers) do
+    local x = def.lower and baseline * (1 - p) or baseline * (1 + p)
+    targets[i] = math.ceil(x - 1e-9)
   end
   return targets
 end
 
-function R.SupportTier(s)
-  if not s or not s.baseline or not s.value then return 0 end
+function R.MeasuredTier(def, entry)
+  if not entry or not entry.baseline or not entry.value then return 0 end
   local tier = 0
-  for i, target in ipairs(R.SupportTargets(s.baseline)) do
-    if s.value <= target then tier = i end
+  for i, target in ipairs(R.Targets(def, entry.baseline)) do
+    if (def.lower and entry.value <= target) or (not def.lower and entry.value >= target) then tier = i end
   end
   return tier
 end
 
-function R.Tier(db, key)
-  if IRL.Disciplines[key] then
-    local d = db.disciplines[key]
-    return d and d.tier or 0
+function R.IsMeasured(def) return def.scale == "percent" or def.percents ~= nil end
+
+-- The definition behind a discipline or supporting-test key.
+function R.DefFor(rb, key) return rb.disciplines[key] or IRL.Supports[key] end
+
+function R.TestKey(key, def) return def and def.test or ("d_" .. key) end
+
+--------------------------------------------------------------------------
+-- Tiers
+--------------------------------------------------------------------------
+function R.Tier(ctx, key)
+  local def = ctx.rb.disciplines[key]
+  if def then
+    local entry = ctx.disc[key]
+    if def.scale == "percent" then return R.MeasuredTier(def, entry) end
+    return entry and entry.tier or 0
   end
-  return R.SupportTier(db.supports[key])
+  local sup = IRL.Supports[key]
+  if sup then return R.MeasuredTier(sup, ctx.db.supports[key]) end
+  return 0
 end
 
 -- Number of the six disciplines at `tier` or better.
-function R.CountAtLeast(db, tier)
+function R.CountAtLeast(ctx, tier)
   local n = 0
-  for _, key in ipairs(IRL.DisciplineOrder) do
-    if R.Tier(db, key) >= tier then n = n + 1 end
+  for _, key in ipairs(ctx.rb.disciplineOrder) do
+    if R.Tier(ctx, key) >= tier then n = n + 1 end
   end
   return n
 end
 
-function R.Meets(db, need) return R.CountAtLeast(db, need[1]) >= need[2] end
-function R.KeyMet(db, key) return R.Tier(db, key[1]) >= key[2] end
+function R.Meets(ctx, need) return R.CountAtLeast(ctx, need[1]) >= need[2] end
+function R.KeyMet(ctx, key) return R.Tier(ctx, key[1]) >= key[2] end
 
-function R.TestDayDone(db)
-  for _, key in ipairs(IRL.DisciplineOrder) do
-    if not (db.disciplines[key] and db.disciplines[key].lastDay) then return false end
+function R.TestDayDone(ctx)
+  for _, key in ipairs(ctx.rb.disciplineOrder) do
+    if not (ctx.disc[key] and ctx.disc[key].lastDay) then return false end
   end
   return true
 end
@@ -67,123 +85,152 @@ end
 --------------------------------------------------------------------------
 function R.TierName(tier) return tier == 0 and "None" or IRL.Tiers[tier] end
 
-function R.NeedText(need)
+function R.NeedText(rb, need)
   local tier, count = need[1], need[2]
-  if count >= #IRL.DisciplineOrder then return IRL.Tiers[tier] .. " in all six" end
+  if count >= #rb.disciplineOrder then return IRL.Tiers[tier] .. " in all six" end
   if count == 1 then return IRL.Tiers[tier] .. " in any one" end
   return IRL.Tiers[tier] .. " in " .. count
 end
 
--- e.g. "Push Silver (35 push-ups)", "Mile Silver (5% faster than baseline)"
-function R.KeyText(key)
-  local what, tier = key[1], key[2]
-  local d = IRL.Disciplines[what]
-  if d then return d.label .. " " .. IRL.Tiers[tier] .. " (" .. d.tiers[tier] .. ")" end
-  local pct = IRL.SupportTierPercent[tier] * 100
-  local detail = pct == 0 and "match your baseline" or string.format("%d%% faster than baseline", pct)
-  return IRL.Supports[what].label .. " " .. IRL.Tiers[tier] .. " (" .. detail .. ")"
+-- "+15% over your baseline", "5% faster than baseline", "match your baseline"
+function R.PercentText(def, tier)
+  local pct = math.floor((def.percents or IRL.PercentTiers)[tier] * 100 + 0.5)
+  if pct == 0 then return "match your baseline" end
+  return string.format(def.lower and "%d%% faster than baseline" or "+%d%% over your baseline", pct)
 end
 
-function R.GateText(g)
-  return string.format("Gate %d (%s)", g, IRL.GateDefs[g].requirement)
+-- e.g. "Push Silver (35 push-ups)", "Brace Silver (+15% over your baseline: 1:09)"
+function R.KeyText(ctx, key)
+  local what, tier = key[1], key[2]
+  local def = R.DefFor(ctx.rb, what)
+  if not R.IsMeasured(def) then
+    return def.label .. " " .. IRL.Tiers[tier] .. " (" .. def.tiers[tier] .. ")"
+  end
+  local detail = R.PercentText(def, tier)
+  local entry = ctx.disc[what] or ctx.db.supports[what]
+  if entry and entry.baseline and IRL.Units then
+    detail = detail .. ": " .. IRL.Units.Format(R.TestKey(what, def), R.Targets(def, entry.baseline)[tier])
+  end
+  return def.label .. " " .. IRL.Tiers[tier] .. " (" .. detail .. ")"
+end
+
+function R.GateText(rb, g)
+  return string.format("Gate %d (%s)", g, rb.gateDefs[g].requirement)
 end
 
 --------------------------------------------------------------------------
 -- Gates and rank. Gates are sequential waves: each needs the one before.
 --------------------------------------------------------------------------
-function R.GatesOpen(db, level)
+function R.GatesOpen(ctx)
   local open = {}
   for g = 0, IRL.GateCount do
-    local def = IRL.GateDefs[g]
+    local def = ctx.rb.gateDefs[g]
     local ok = g == 0 or open[g - 1]
-    if def.testDay then ok = ok and R.TestDayDone(db) end
-    if def.need then ok = ok and R.Meets(db, def.need) end
-    if def.level then ok = ok and (level or 0) >= def.level end
-    if def.key then ok = ok and R.KeyMet(db, def.key) end
+    if def.testDay then ok = ok and R.TestDayDone(ctx) end
+    if def.need then ok = ok and R.Meets(ctx, def.need) end
+    if def.level then ok = ok and (ctx.level or 0) >= def.level end
+    if def.key then ok = ok and R.KeyMet(ctx, def.key) end
     open[g] = ok and true or false
   end
   return open
 end
 
-function R.Rank(db, open)
+function R.Rank(ctx)
   local rank = 1
   for i, def in ipairs(IRL.Ranks) do
     local ok = true
-    if def.gate then ok = ok and open[def.gate] end
-    if def.need then ok = ok and R.Meets(db, def.need) end
+    if def.gate then ok = ok and ctx.open[def.gate] end
+    if def.need then ok = ok and R.Meets(ctx, def.need) end
     if ok then rank = i end
   end
   return rank
 end
 
-function R.Context(db, level)
-  local open = R.GatesOpen(db, level)
-  return { db = db, level = level, open = open, rank = R.Rank(db, open) }
+function R.Context(db, level, rb)
+  rb = rb or IRL.Rulebooks.windwalker
+  local spec = db.specs and db.specs[rb.key]
+  local ctx = { db = db, level = level, rb = rb, disc = spec and spec.disciplines or {} }
+  ctx.open = R.GatesOpen(ctx)
+  ctx.rank = R.Rank(ctx)
+  return ctx
 end
 
 --------------------------------------------------------------------------
 -- Judging talents and spells
 --------------------------------------------------------------------------
-local keysLower, cooldownsLower
-local function Lookups()
-  if keysLower then return end
-  keysLower, cooldownsLower = {}, {}
-  for name, k in pairs(IRL.Keys) do keysLower[name:lower()] = k end
-  for _, name in ipairs(IRL.MajorCooldowns) do cooldownsLower[name:lower()] = true end
+local function Lookups(rb)
+  if rb._keysLower then return end
+  rb._keysLower, rb._cooldownsLower = {}, {}
+  for name, k in pairs(rb.keys) do rb._keysLower[name:lower()] = k end
+  for _, name in ipairs(rb.majorCooldowns) do rb._cooldownsLower[name:lower()] = true end
 end
 
-local function IsFortifyingUpgrade(name)
-  local f = IRL.FortifyingUpgrades
+-- The pattern rule a name falls under, or nil.
+local function MatchPattern(rb, name)
   local l = lower(name)
-  if not l then return false end
-  for _, extra in ipairs(f.extra) do if extra:lower() == l then return true end end
-  return l ~= f.base:lower() and l:find(f.pattern, 1, true) ~= nil
+  if not l then return nil end
+  for _, pk in ipairs(rb.patternKeys) do
+    for _, extra in ipairs(pk.extra or {}) do
+      if extra:lower() == l then return pk end
+    end
+    local excluded = false
+    for _, e in ipairs(pk.except or {}) do if e == l then excluded = true end end
+    if not excluded and l:find(pk.pattern, 1, true) then return pk end
+  end
+  return nil
 end
 
--- Is this name governed by a rule even without talent-tree position?
-function R.IsRuleName(name)
-  Lookups()
-  local l = lower(name)
-  return l ~= nil and (keysLower[l] ~= nil or cooldownsLower[l] or IsFortifyingUpgrade(name))
+-- Names that carry a rule even without talent-tree position (for casts,
+-- tooltips and action bars).
+function R.RuleNames(rb)
+  local names = {}
+  for name in pairs(rb.keys) do names[name] = true end
+  for _, name in ipairs(rb.majorCooldowns) do names[name] = true end
+  for _, pk in ipairs(rb.patternKeys) do
+    for _, extra in ipairs(pk.extra or {}) do names[extra] = true end
+  end
+  return names
 end
 
 -- meta: { name, section (1-3), isCapstone, heroTree, isHeroFinal, isApex, rank }
 -- Returns { name, unlocked, reqs = { {ok, text}, ... }, missing = {texts} }.
 function R.Evaluate(ctx, meta)
-  Lookups()
-  local db, open = ctx.db, ctx.open
+  local rb, open = ctx.rb, ctx.open
+  Lookups(rb)
   local reqs = {}
   local function add(ok, text) table.insert(reqs, { ok = ok and true or false, text = text }) end
 
   if meta.isApex then
     local rule = IRL.ApexRule
-    add(open[rule.gate], R.GateText(rule.gate))
+    add(open[rule.gate], R.GateText(rb, rule.gate))
     local rank = math.max(meta.rank or 1, 1)
     for _, r in ipairs(rule.ranks) do
       if r.minRank <= rank then
-        add(R.Meets(db, r.need), string.format("%s (rank %d+): %s", r.label, r.minRank, R.NeedText(r.need)))
+        add(R.Meets(ctx, r.need), string.format("%s (rank %d+): %s", r.label, r.minRank, R.NeedText(rb, r.need)))
       end
     end
   elseif meta.heroTree then
     local rule = IRL.HeroRule
-    add(open[rule.gate], R.GateText(rule.gate))
-    if meta.isHeroFinal then add(R.Meets(db, rule.finalNeed), "Final hero node: " .. R.NeedText(rule.finalNeed)) end
+    add(open[rule.gate], R.GateText(rb, rule.gate))
+    if meta.isHeroFinal then
+      add(R.Meets(ctx, rule.finalNeed), "Final hero node: " .. R.NeedText(rb, rule.finalNeed))
+    end
   else
     local l = lower(meta.name)
-    local keyed = l and keysLower[l]
-    local fort = IsFortifyingUpgrade(meta.name) and IRL.FortifyingUpgrades
+    local keyed = l and rb._keysLower[l]
+    local pat = MatchPattern(rb, meta.name)
     local gate
     if keyed then gate = keyed.gate
-    elseif l and cooldownsLower[l] then gate = 2
-    elseif fort then gate = fort.gate
+    elseif l and rb._cooldownsLower[l] then gate = 2
+    elseif pat then gate = pat.gate
     else gate = IRL.SectionGate[meta.section or 1] or 0 end
     if meta.isCapstone then gate = math.max(gate, IRL.CapstoneRule.gate) end
 
-    add(open[gate], R.GateText(gate))
-    if keyed then add(R.KeyMet(db, keyed.key), "Key: " .. R.KeyText(keyed.key)) end
-    if fort then add(R.KeyMet(db, fort.key), "Key: " .. R.KeyText(fort.key)) end
+    add(open[gate], R.GateText(rb, gate))
+    if keyed then add(R.KeyMet(ctx, keyed.key), "Key: " .. R.KeyText(ctx, keyed.key)) end
+    if pat then add(R.KeyMet(ctx, pat.key), "Key: " .. R.KeyText(ctx, pat.key)) end
     if meta.isCapstone then
-      add(R.Meets(db, IRL.CapstoneRule.need), "Capstone: " .. R.NeedText(IRL.CapstoneRule.need))
+      add(R.Meets(ctx, IRL.CapstoneRule.need), "Capstone: " .. R.NeedText(rb, IRL.CapstoneRule.need))
     end
   end
 
@@ -193,7 +240,7 @@ function R.Evaluate(ctx, meta)
 end
 
 function R.FlyingAllowed(ctx)
-  return R.KeyMet(ctx.db, IRL.FlyingKey), "Key: " .. R.KeyText(IRL.FlyingKey)
+  return R.KeyMet(ctx, IRL.FlyingKey), "Key: " .. R.KeyText(ctx, IRL.FlyingKey)
 end
 
 --------------------------------------------------------------------------
@@ -213,13 +260,14 @@ function R.RetryLeft(entry, today)
 end
 
 --------------------------------------------------------------------------
--- What changed between two states, for toasts.
+-- What changed between two states, for toasts. Switching spec changes the
+-- whole ruleset, so a diff across specs is empty.
 --------------------------------------------------------------------------
 function R.Diff(a, b)
   local gained, lost = {}, {}
-  if not a then return gained, lost end
+  if not a or a.ctx.rb ~= b.ctx.rb then return gained, lost end
   for g = 0, IRL.GateCount do
-    local name = string.format("Gate %d: %s", g, IRL.GateDefs[g].name)
+    local name = string.format("Gate %d: %s", g, b.ctx.rb.gateDefs[g].name)
     if b.open[g] and not a.open[g] then table.insert(gained, name) end
     if a.open[g] and not b.open[g] then table.insert(lost, name) end
   end

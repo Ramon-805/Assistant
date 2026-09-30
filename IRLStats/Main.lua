@@ -52,13 +52,13 @@ local function CollectTalentNames()
     local ok, found = pcall(ScanConfig, id, names)
     if ok and found then return names, "your talent loadout" end
   end
-  -- No usable loadout (e.g. below level 10): build a view-only Windwalker tree.
+  -- No usable loadout (e.g. below level 10): build a view-only tree for the spec.
   local viewID = Constants and Constants.TraitConsts and Constants.TraitConsts.VIEW_TRAIT_CONFIG_ID
   if viewID and C_ClassTalents.InitializeViewLoadout then
     local maxLevel = GetMaxLevelForPlayerExpansion and GetMaxLevelForPlayerExpansion() or 90
     local ok = pcall(C_ClassTalents.InitializeViewLoadout, specID or WINDWALKER, maxLevel)
     local ok2, found = pcall(ScanConfig, viewID, names)
-    if ok and ok2 and found then return names, "a view-only Windwalker tree" end
+    if ok and ok2 and found then return names, "a view-only " .. IRL.ActiveRulebook().label .. " tree" end
   end
   return names, nil
 end
@@ -80,16 +80,17 @@ local function Verify()
       table.insert(missing, name)
     end
   end
+  -- Only the active spec's names: the other spec's talents aren't in this tree.
+  local rb = IRL.ActiveRulebook()
   local names = {}
-  for name in pairs(IRL.Keys) do table.insert(names, name) end
-  for _, list in ipairs({ IRL.MajorCooldowns, IRL.FortifyingUpgrades.extra, IRL.ApexNames,
-                          { "Shado-Pan", "Conduit of the Celestials" } }) do
+  for name in pairs(IRL.Rules.RuleNames(rb)) do table.insert(names, name) end
+  for _, list in ipairs({ rb.apexNames, rb.heroTrees }) do
     for _, name in ipairs(list) do table.insert(names, name) end
   end
   table.sort(names)
   for _, name in ipairs(names) do check(name) end
 
-  IRL.Print(string.format("Level %s, spec %s, talents read from %s.",
+  IRL.Print(string.format("%s rulebook. Level %s, spec %s, talents read from %s.", rb.label,
     tostring(UnitLevel("player")), tostring(IRL.CurrentSpecID() or "none"),
     source or "|cffff6040nowhere (talent data unavailable)|r"))
   IRL.Print(string.format("%d of %d gate names found.", found, total))
@@ -106,7 +107,7 @@ end
 local HELP = {
   "/irl - open the Gymlocke sheet (rank, disciplines, flags)",
   "/irl rank | disciplines | flags - open a tab",
-  "/irl testday - run Test Day (log all six disciplines and baselines)",
+  "/irl testday - run Test Day for your current spec (log all six disciplines)",
   "/irl verify - check rulebook talent names against your spells and talents",
   "/irl minimap - show/hide the minimap button",
 }
@@ -145,11 +146,11 @@ frame:SetScript("OnEvent", function(self, event, arg1)
     IRL.Recompute("init")
     IRL.CreateMinimapButton()
     C_Timer.NewTicker(30, IRL.CheckDayRollover)
-    if not IRL.Rules.TestDayDone(IRL.db) then
-      IRL.Print("Gymlocke: Test Day isn't done yet. Film all six disciplines, then log them. (/irl testday)")
-      C_Timer.After(3, IRL.UI.ShowWizard)
-    elseif not IRL.enforced then
-      IRL.Print("Gates aren't enforced on this character (the rulebook covers Windwalker monks).")
+    if not IRL.enforced then
+      IRL.Print("Gates aren't enforced on this character (rulebooks cover Windwalker and Brewmaster monks).")
+    elseif not IRL.Rules.TestDayDone(IRL.state.ctx) then
+      IRL.Print(IRL.rb.label .. " Test Day isn't done yet. Film all six disciplines, then log them. (/irl testday)")
+      C_Timer.After(3, function() IRL.UI.ShowWizard(IRL.rb) end)
     end
   end
 end)

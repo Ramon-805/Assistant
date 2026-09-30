@@ -1,12 +1,14 @@
 -- SavedVariables and the actions that change them. Every change ends in
--- IRL.Recompute(), which rebuilds gates, rank and unlock state and fires
--- STATE_CHANGED with what was gained or lost.
+-- IRL.Recompute(), which rebuilds gates, rank and unlock state for the
+-- active rulebook and fires STATE_CHANGED with what was gained or lost.
 --
 -- IRLStatsDB (account-wide; it's the same body on every character):
---   disciplines[key] = { tier, last = "YYYY-MM-DD", lastDay, lostTier, retryUntil,
---                        history = { {tier, date, t} } }
---   supports[key]    = { baseline, value, last, lastDay, lostTier, retryUntil,
---                        history = { {value, date, t} } }
+--   specs[rulebook].disciplines[key]   one ladder per spec (Windwalker, Brewmaster)
+--       landmark: { tier, last = "YYYY-MM-DD", lastDay, lostTier, retryUntil,
+--                   history = { {tier, date, t} } }
+--       measured: { baseline, value, last, lastDay, lostTier, retryUntil,
+--                   history = { {value, date, t} } }
+--   supports[key]   mile and reaction, measured, shared by every spec
 --   minimap = { angle, hide }, profile = { units }
 --   legacyV1 = data from the pre-rulebook build, kept but unused
 -- IRLStatsCharDB (per character):
@@ -14,15 +16,22 @@
 --   talentSig  last flagged loadout signature
 local _, IRL = ...
 
-local DB_VERSION = 2
+local DB_VERSION = 3
 
 local function defaults()
-  local disciplines, supports = {}, {}
-  for _, key in ipairs(IRL.DisciplineOrder) do disciplines[key] = { tier = 0, history = {} } end
+  local specs, supports = {}, {}
+  for _, rbKey in ipairs(IRL.RulebookOrder) do
+    local rb = IRL.Rulebooks[rbKey]
+    local disciplines = {}
+    for _, key in ipairs(rb.disciplineOrder) do
+      disciplines[key] = rb.disciplines[key].scale == "percent" and { history = {} } or { tier = 0, history = {} }
+    end
+    specs[rbKey] = { disciplines = disciplines }
+  end
   for _, key in ipairs(IRL.SupportOrder) do supports[key] = { history = {} } end
   return {
     version = DB_VERSION,
-    disciplines = disciplines,
+    specs = specs,
     supports = supports,
     profile = { units = "imperial" },
     minimap = { angle = 215, hide = false },
@@ -49,9 +58,19 @@ local function MigrateV1(db)
   db.categories, db.milestones, db.habit, db.streaks, db.setupDone = nil, nil, nil, nil, nil
 end
 
+-- v2 had one set of disciplines: Windwalker's. Move them under specs.
+local function MigrateV2(db)
+  if (db.version or 1) >= 3 or not db.disciplines then return end
+  db.specs = db.specs or {}
+  db.specs.windwalker = db.specs.windwalker or {}
+  db.specs.windwalker.disciplines = db.disciplines
+  db.disciplines = nil
+end
+
 function IRL.InitDB()
   IRLStatsDB = IRLStatsDB or {}
   MigrateV1(IRLStatsDB)
+  MigrateV2(IRLStatsDB)
   fill(IRLStatsDB, defaults())
   IRLStatsDB.version = DB_VERSION
   IRLStatsCharDB = IRLStatsCharDB or {}
@@ -60,7 +79,39 @@ function IRL.InitDB()
 end
 
 --------------------------------------------------------------------------
--- State
+-- Rulebooks: which one is active (the current spec's), which one the window
+-- is showing.
+--------------------------------------------------------------------------
+-- No spec yet (below level 10) or a spec without a rulebook: Windwalker's.
+function IRL.ActiveRulebook()
+  local specID = IRL.CurrentSpecID and IRL.CurrentSpecID()
+  local key = specID and IRL.SpecRulebook[specID]
+  return IRL.Rulebooks[key or "windwalker"]
+end
+
+-- Does the current spec have a rulebook to enforce? (No spec counts as yes.)
+function IRL.SpecHasRulebook()
+  local specID = IRL.CurrentSpecID and IRL.CurrentSpecID()
+  return specID == nil or IRL.SpecRulebook[specID] ~= nil
+end
+
+function IRL.ViewRulebook() return IRL.viewRb or IRL.rb or IRL.Rulebooks.windwalker end
+
+function IRL.SetViewRulebook(rb)
+  IRL.viewRb = rb
+  IRL.Fire("VIEW_CHANGED", rb)
+end
+
+-- Context for the rulebook the window is showing (may not be the active one).
+function IRL.ViewContext()
+  return IRL.Rules.Context(IRL.db, IRL.PlayerLevelSafe(), IRL.ViewRulebook())
+end
+
+local function Store(rb) return IRL.db.specs[(rb or IRL.rb).key].disciplines end
+IRL.DisciplineStore = Store
+
+--------------------------------------------------------------------------
+-- State (for the active rulebook)
 --------------------------------------------------------------------------
 IRL.nodeMeta = {} -- lower-cased talent name -> tree meta, filled by Detect/Talents.lua
 
@@ -70,17 +121,15 @@ local function AddSpell(state, info, kind)
   state.byLower[info.name:lower()] = info
 end
 
-function IRL.BuildState(db, level, today)
+function IRL.BuildState(db, level, today, rb)
   local R = IRL.Rules
-  local ctx = R.Context(db, level)
+  local ctx = R.Context(db, level, rb)
   local state = { ctx = ctx, open = ctx.open, rank = ctx.rank, spells = {}, byLower = {}, today = today }
 
   -- Rule names judged without tree position (casts, tooltips, action bars).
-  local names = {}
-  for name in pairs(IRL.Keys) do names[name] = true end
-  for _, name in ipairs(IRL.MajorCooldowns) do names[name] = true end
-  for _, name in ipairs(IRL.FortifyingUpgrades.extra) do names[name] = true end
-  for name in pairs(names) do AddSpell(state, R.Evaluate(ctx, { name = name }), "rule") end
+  for name in pairs(R.RuleNames(ctx.rb)) do
+    AddSpell(state, R.Evaluate(ctx, { name = name }), "rule")
+  end
 
   -- Everything in the talent tree, judged by its position (overrides the above).
   for _, meta in pairs(IRL.nodeMeta) do
@@ -100,7 +149,8 @@ end
 function IRL.Recompute(reason)
   local old = IRL.state
   local today = IRL.Today()
-  IRL.state = IRL.BuildState(IRL.db, IRL.PlayerLevelSafe(), today)
+  IRL.rb = IRL.ActiveRulebook()
+  IRL.state = IRL.BuildState(IRL.db, IRL.PlayerLevelSafe(), today, IRL.rb)
   IRL.stateDay = today
   local gained, lost = IRL.Rules.Diff(old, IRL.state)
   IRL.Fire("STATE_CHANGED", gained, lost, reason)
@@ -135,9 +185,9 @@ local function Stamp(entry, oldTier, newTier, now)
   entry.last, entry.lastDay = IRL.DayString(now), today
 end
 
--- tier: 0 (not yet Bronze) .. 4 (Legendary)
-function IRL.LogDiscipline(key, tier)
-  local entry = IRL.db.disciplines[key]
+-- Landmark discipline. tier: 0 (not yet Bronze) .. 4 (Legendary)
+function IRL.LogDiscipline(key, tier, rb)
+  local entry = Store(rb)[key]
   local now = IRL.Now()
   local old = entry.tier or 0
   table.insert(entry.history, { tier = tier, date = IRL.DayString(now), t = now })
@@ -146,19 +196,30 @@ function IRL.LogDiscipline(key, tier)
   return IRL.Recompute("test")
 end
 
--- value in seconds (mile) or ms (reaction). The first result is the baseline.
-function IRL.LogSupport(key, value)
-  local entry = IRL.db.supports[key]
+-- Measured result (reps, seconds held, mile seconds, reaction ms). The first
+-- result is the baseline and stays fixed: tiers are measured from it.
+local function LogMeasured(def, entry, value)
   local now = IRL.Now()
-  local old = IRL.Rules.SupportTier(entry)
+  local old = IRL.Rules.MeasuredTier(def, entry)
   table.insert(entry.history, { value = value, date = IRL.DayString(now), t = now })
   if not entry.baseline then entry.baseline = value end
   entry.value = value
-  Stamp(entry, old, IRL.Rules.SupportTier(entry), now)
+  Stamp(entry, old, IRL.Rules.MeasuredTier(def, entry), now)
   return IRL.Recompute("test")
 end
 
--- Start the % scale over from a new baseline (e.g. a new route).
+function IRL.LogMeasured(key, value, rb)
+  rb = rb or IRL.rb
+  return LogMeasured(rb.disciplines[key], Store(rb)[key], value)
+end
+
+function IRL.LogSupport(key, value)
+  return LogMeasured(IRL.Supports[key], IRL.db.supports[key], value)
+end
+
+-- Start a supporting test's % scale over from a new baseline (e.g. a new
+-- mile route). Disciplines never re-baseline: that would let a sandbagged
+-- Test Day make every tier easy.
 function IRL.SetSupportBaseline(key, value)
   local entry = IRL.db.supports[key]
   entry.baseline, entry.lostTier, entry.retryUntil = value, nil, nil

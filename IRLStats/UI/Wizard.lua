@@ -1,31 +1,40 @@
--- Test Day wizard: the protocol, then one page per discipline (pick the
--- highest tier you passed on camera), then reaction time and the mile.
--- Re-running it is the monthly retest: every discipline is logged again.
+-- Test Day wizard for one spec's rulebook: the protocol, then one page per
+-- discipline, then reaction time and the mile. Landmark disciplines pick the
+-- highest tier passed on camera; measured ones take reps or seconds (the
+-- first result is the baseline). Re-running it is the monthly retest.
 local _, IRL = ...
 local UI = IRL.UI
+local R = IRL.Rules
 
 local wiz
-local draft -- [key] = { value, filmed }
+local rb      -- rulebook being tested
+local steps   -- "intro", six discipline keys, "reaction", "mile"
+local draft   -- [key] = { value, filmed }
 
--- Steps: intro, six disciplines, reaction, mile.
-local STEPS = { "intro" }
-for _, key in ipairs(IRL.DisciplineOrder) do table.insert(STEPS, key) end
-table.insert(STEPS, "reaction")
-table.insert(STEPS, "mile")
-
-local INTRO = table.concat({
-  "Your Windwalker is only as strong as you are. Log what you can do on camera today.",
-  "",
-  "- Same time of day and the same warm-up every test (5 min light jog plus dynamic stretches).",
-  "- Day 1: Flexibility, Press, Pull, Push, Legs, Core, reaction time. Day 2: mile run.",
-  "- Film every attempt uncut with a timer visible, in one folder named by date.",
-  "- A rep that breaks form doesn't count.",
-  "",
-  "Re-run this every month as your retest. Anything you can no longer do comes off your bar.",
-}, "\n")
+local function Intro()
+  return table.concat({
+    "Your " .. rb.label .. " is only as strong as you are. Log what you can do on camera today.",
+    "",
+    "- Same time of day and the same warm-up every test (5 min light jog plus dynamic stretches).",
+    "- Day 1: " .. rb.dayOne .. ". Day 2: mile run.",
+    "- Film every attempt uncut with a timer visible, in one folder named by date.",
+    "- A rep that breaks form doesn't count.",
+    "",
+    "Re-run this every month as your retest. Anything you can no longer do comes off your bar.",
+  }, "\n")
+end
 
 local function TestKey(key)
-  return IRL.Disciplines[key] and ("d_" .. key) or IRL.Supports[key].test
+  return rb.disciplines[key] and ("d_" .. key) or IRL.Supports[key].test
+end
+
+-- "Bronze 1:00 / Silver 1:09 / ..." once there's a baseline.
+local function TargetLine(def, testKey, baseline)
+  local parts = {}
+  for i, target in ipairs(R.Targets(def, baseline)) do
+    parts[i] = "|c" .. IRL.TierColors[i] .. IRL.Tiers[i] .. "|r " .. IRL.Units.Format(testKey, target)
+  end
+  return table.concat(parts, "   ")
 end
 
 local function BuildPage(parent)
@@ -57,8 +66,8 @@ local function BuildPage(parent)
     self.input:SetShown(not isIntro)
     self.video:SetShown(not isIntro)
     if isIntro then
-      self.heading:SetText("Test Day")
-      self.body:SetText(INTRO)
+      self.heading:SetText(rb.label .. " Test Day")
+      self.body:SetText(Intro())
       return
     end
     local d = draft[step]
@@ -66,8 +75,15 @@ local function BuildPage(parent)
     self.input:SetTest(test)
     self.input:SetValue(d.value)
     self.video:SetChecked(d.filmed or false)
-    local disc = IRL.Disciplines[step]
-    if disc then
+    local disc = rb.disciplines[step]
+    if disc and disc.scale == "percent" then
+      local entry = IRL.DisciplineStore(rb)[step]
+      self.heading:SetText(disc.label .. ": " .. disc.measure .. "  |cff999999(" .. disc.equipment .. ")|r")
+      self.body:SetText(disc.form)
+      self.tiers:SetText(entry.baseline and TargetLine(disc, test, entry.baseline)
+        or "This result becomes your baseline (Bronze). Silver, Gold and Legendary are +15%, +30% and +50% over it, so test honestly.")
+      self.inputLabel:SetText("Result")
+    elseif disc then
       self.heading:SetText(disc.label .. "  |cff999999(" .. disc.equipment .. ")|r")
       self.body:SetText(disc.form)
       local lines = {}
@@ -78,11 +94,9 @@ local function BuildPage(parent)
       self.inputLabel:SetText("Highest tier")
     else
       local s, entry = IRL.Supports[step], IRL.db.supports[step]
-      self.heading:SetText(s.label .. "  |cff999999(supporting test)|r")
+      self.heading:SetText(s.label .. "  |cff999999(supporting test, shared by every spec)|r")
       self.body:SetText(IRL.Tests[test].how)
-      self.tiers:SetText(entry.baseline
-        and ("Baseline " .. IRL.Units.Format(test, entry.baseline)
-             .. ". Bronze matches it; Silver, Gold and Legendary are 5%, 10% and 15% faster.")
+      self.tiers:SetText(entry.baseline and TargetLine(s, test, entry.baseline)
         or "Your first result becomes your baseline. Skip if you'll test it another day; its keys stay locked.")
       self.inputLabel:SetText("Result")
     end
@@ -107,10 +121,12 @@ end
 local function Apply()
   local before = IRL.state
   IRL.suppressToasts = true
-  for _, step in ipairs(STEPS) do
+  for _, step in ipairs(steps) do
     local d = draft[step]
     if d and d.value and d.filmed then
-      if IRL.Disciplines[step] then IRL.LogDiscipline(step, d.value - 1)
+      local disc = rb.disciplines[step]
+      if disc and disc.scale == "percent" then IRL.LogMeasured(step, d.value, rb)
+      elseif disc then IRL.LogDiscipline(step, d.value - 1, rb)
       else IRL.LogSupport(step, d.value) end
     end
   end
@@ -142,7 +158,7 @@ local function Build()
   f.back = UI.Button(f, "Back", 90, 22, function() f:Go(f.step - 1, "lenient") end)
   f.back:SetPoint("BOTTOMLEFT", 12, 12)
   f.skip = UI.Button(f, "Skip", 90, 22, function()
-    draft[STEPS[f.step]] = {}
+    draft[steps[f.step]] = {}
     f:Go(f.step + 1, true)
   end)
   f.skip:SetPoint("BOTTOMRIGHT", -108, 12)
@@ -153,34 +169,46 @@ local function Build()
   function f:Go(step, save)
     self.error:SetText("")
     if save ~= true and self.step then
-      local ok, err = self.page:Save(STEPS[self.step], save == "lenient")
+      local ok, err = self.page:Save(steps[self.step], save == "lenient")
       if not ok then self.error:SetText(err) return end
     end
-    if step > #STEPS then
+    if step > #steps then
       Apply()
       self:Hide()
-      IRL.Print("Test Day logged. See your rank and gates in /irl.")
+      IRL.Print(rb.label .. " Test Day logged. See your rank and gates in /irl.")
+      IRL.SetViewRulebook(rb)
       IRL.ToggleMain("Rank")
       return
     end
     self.step = math.max(1, step)
-    local name = STEPS[self.step]
+    local name = steps[self.step]
     self.page:Load(name)
     self.back:SetEnabled(self.step > 1)
     -- The six disciplines are all required for Test Day; supporting tests can wait.
     self.skip:SetShown(IRL.Supports[name] ~= nil)
-    self.next:SetText(self.step == #STEPS and "Finish" or "Next")
+    self.next:SetText(self.step == #steps and "Finish" or "Next")
   end
   f:Hide()
   return f
 end
 
-function UI.ShowWizard()
+-- forRb: the rulebook to test (default: the one the window is showing).
+function UI.ShowWizard(forRb)
   wiz = wiz or Build()
+  rb = forRb or IRL.ViewRulebook()
+  wiz.title:SetText("Gymlocke - " .. rb.label .. " Test Day")
+  steps = { "intro" }
+  for _, key in ipairs(rb.disciplineOrder) do table.insert(steps, key) end
+  table.insert(steps, "reaction")
+  table.insert(steps, "mile")
+
   draft = {}
-  for _, key in ipairs(IRL.DisciplineOrder) do
-    local tier = IRL.db.disciplines[key].tier or 0
-    draft[key] = { value = IRL.db.disciplines[key].lastDay and tier + 1 or nil }
+  local store = IRL.DisciplineStore(rb)
+  for _, key in ipairs(rb.disciplineOrder) do
+    local entry = store[key]
+    -- Pre-fill landmark tiers from last time; measured results start blank.
+    local value = rb.disciplines[key].scale ~= "percent" and entry.lastDay and (entry.tier or 0) + 1 or nil
+    draft[key] = { value = value }
   end
   for _, key in ipairs(IRL.SupportOrder) do draft[key] = {} end
   wiz.step = nil

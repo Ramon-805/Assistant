@@ -3,7 +3,7 @@
 -- Walks every node of the active config and records where it sits:
 --   section      1 top / 2 middle / 3 bottom, from the tree's own point gates
 --   isCapstone   bottom row of the spec tree (apex excluded)
---   isApex       named in IRL.ApexNames, or a 4+ rank spec node
+--   isApex       named in the rulebook's apexNames, or a 4+ rank spec node
 --   heroTree     hero sub-tree name; isHeroFinal = its bottom row
 -- That meta feeds Core/Rules.lua, the talent-frame tints and tooltips.
 -- Each locked selection writes one flag per loadout change (signature below).
@@ -24,13 +24,12 @@ local function EntryName(configID, entryID)
   return IRL.SpellName(def.overriddenSpellID or def.spellID)
 end
 
-local apexNames
 local function IsApexName(name)
-  if not apexNames then
-    apexNames = {}
-    for _, n in ipairs(IRL.ApexNames) do apexNames[n:lower()] = true end
+  if not name then return false end
+  for _, n in ipairs(IRL.ActiveRulebook().apexNames or {}) do
+    if n:lower() == name:lower() then return true end
   end
-  return name and apexNames[name:lower()]
+  return false
 end
 
 -- Returns metaByID, metaByName, selected = { {meta, rank, entryID} }, signature.
@@ -147,6 +146,26 @@ function IRL.LockedSelections(selected)
 end
 
 local lastMetaSig
+
+-- A new spec means a new tree and a new rulebook: drop the old tree data,
+-- switch the window to the new spec and say where you stand.
+function IRL.OnSpecChanged()
+  if not IRL.state then return end -- before PLAYER_LOGIN; login builds the state
+  local before = IRL.rb
+  IRL.enforced = IRL.IsEnforced()
+  IRL.nodeMeta, IRL.nodeMetaByID, lastMetaSig = {}, {}, nil
+  IRL.viewRb = nil
+  IRL.Recompute("spec")
+  if IRL.enforced and IRL.rb ~= before then
+    local R = IRL.Rules
+    if not R.TestDayDone(IRL.state.ctx) then
+      IRL.Print(IRL.rb.label .. " has its own ladder and no Test Day yet: everything past baseline abilities is locked. (/irl testday)")
+    else
+      IRL.Print(IRL.rb.label .. " rulebook active: " .. IRL.Ranks[IRL.state.rank].name .. ".")
+    end
+  end
+end
+
 function IRL.CheckTalents()
   if not IRL.state or not IRL.enforced then return end
   if InCombatLockdown() then return end -- PLAYER_REGEN_ENABLED re-checks
@@ -189,7 +208,7 @@ frame:RegisterEvent("PLAYER_ENTERING_WORLD")
 frame:SetScript("OnEvent", function(_, event, arg1)
   if event == "PLAYER_SPECIALIZATION_CHANGED" then
     if arg1 and arg1 ~= "player" then return end
-    IRL.enforced = IRL.IsEnforced()
+    IRL.OnSpecChanged()
   end
   -- Loadout data settles a frame after these events.
   C_Timer.After(0.5, IRL.CheckTalents)

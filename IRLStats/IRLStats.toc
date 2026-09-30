@@ -1,8 +1,8 @@
 ## Interface: 120100
 ## Title: Gymlocke (IRL Stats)
-## Notes: Gymlocke rulebook for Windwalker monks: talents unlock as you pass calisthenics tests. Flags, never blocks.
+## Notes: Gymlocke rulebooks for Windwalker and Brewmaster monks: talents unlock as you pass fitness tests. Flags, never blocks.
 ## Author: Ray
-## Version: 0.2.0
+## Version: 0.3.0
 ## IconTexture: Interface\Icons\ClassIcon_Monk
 ## SavedVariables: IRLStatsDB
 ## SavedVariablesPerCharacter: IRLStatsCharDB

@@ -8,10 +8,6 @@ IRL.name = ADDON or "IRLStats"
 IRL.Config = {
   flagCooldown = 60,      -- seconds; same locked spell flags at most once per window
   warningSound = true,
-  -- The rulebook covers Windwalker. These specs are never enforced so a
-  -- Brewmaster or Mistweaver alt isn't flagged before it has a rulebook.
-  -- Low-level monks without a spec (and the "initial" spec) are enforced.
-  exemptSpecs = { [268] = true, [270] = true },
 }
 
 --------------------------------------------------------------------------

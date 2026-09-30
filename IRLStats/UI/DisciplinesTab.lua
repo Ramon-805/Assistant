@@ -1,6 +1,6 @@
--- Disciplines tab: one row per discipline and supporting test with your
--- tier, the next landmark, what it keys, retest countdown and the retry
--- window after a failed retest.
+-- Disciplines tab: the viewed spec's six disciplines plus the shared
+-- supporting tests, each with your tier, the next target, what it keys,
+-- retest countdown and the retry window after a failed retest.
 local _, IRL = ...
 local UI = IRL.UI
 local R = IRL.Rules
@@ -14,24 +14,26 @@ end
 
 -- Talents and gates that use this discipline or test, e.g. "Fists of Fury (Silver)".
 local keyedCache = {}
-local function KeyedBy(key)
-  if keyedCache[key] then return keyedCache[key] end
+local function KeyedBy(rb, key)
+  local cacheKey = rb.key .. ":" .. key
+  if keyedCache[cacheKey] then return keyedCache[cacheKey] end
   local list = {}
-  for name, k in pairs(IRL.Keys) do
+  for name, k in pairs(rb.keys) do
     if k.key[1] == key then table.insert(list, name .. " (" .. IRL.Tiers[k.key[2]] .. ")") end
   end
-  local f = IRL.FortifyingUpgrades
-  if f.key[1] == key then table.insert(list, "Fortifying Brew upgrades (" .. IRL.Tiers[f.key[2]] .. ")") end
+  for _, pk in ipairs(rb.patternKeys) do
+    if pk.key[1] == key then table.insert(list, pk.label .. " (" .. IRL.Tiers[pk.key[2]] .. ")") end
+  end
   if IRL.FlyingKey[1] == key then table.insert(list, "Flying (" .. IRL.Tiers[IRL.FlyingKey[2]] .. ")") end
   for g = 0, IRL.GateCount do
-    local def = IRL.GateDefs[g]
+    local def = rb.gateDefs[g]
     if def.key and def.key[1] == key then
       table.insert(list, "Gate " .. g .. " (" .. IRL.Tiers[def.key[2]] .. ")")
     end
   end
   table.sort(list)
-  keyedCache[key] = table.concat(list, ", ")
-  return keyedCache[key]
+  keyedCache[cacheKey] = table.concat(list, ", ")
+  return keyedCache[cacheKey]
 end
 
 local function RetestText(entry)
@@ -51,22 +53,60 @@ local function RetestText(entry)
   return #parts > 0 and table.concat(parts, "  -  ") or "|cff999999Not tested yet|r"
 end
 
-local function LogDiscipline(key)
-  local d, entry = IRL.Disciplines[key], IRL.db.disciplines[key]
-  UI.Prompt({
-    title = d.label,
-    text = "Pick the highest tier you passed on camera today.",
-    showHow = true, requireVideo = true,
-    test = "d_" .. key, value = (entry.tier or 0) + 1,
-    onAccept = function(v)
-      local old = entry.tier or 0
-      IRL.LogDiscipline(key, v - 1)
-      if entry.lastDay and v - 1 < old then
-        IRL.Print(string.format("%s dropped to %s. Its keys are off your bar until you pass again; one retry within %d days.",
-          d.label, R.TierName(v - 1), IRL.RetryDays))
-      end
-    end,
-  })
+-- "Baseline 1:00, latest 1:05" and "Next: Silver at 1:09 or better"
+local function MeasuredText(def, testKey, entry, tier)
+  if not entry.baseline then return nil, nil end
+  local sub = "Baseline " .. Units.Format(testKey, entry.baseline) .. ", latest " .. Units.Format(testKey, entry.value)
+  local targets = R.Targets(def, entry.baseline)
+  local nextTier = tier + 1
+  local nextText = targets[nextTier]
+    and string.format("Next: %s at %s or %s", IRL.Tiers[nextTier], Units.Format(testKey, targets[nextTier]),
+      def.lower and "faster" or "better")
+    or "|cffffd100Legendary - top tier|r"
+  return sub, nextText
+end
+
+local function DroppedNotice(label, entry, oldTier, newTier)
+  if entry.lastDay and newTier < oldTier then
+    IRL.Print(string.format("%s dropped to %s. Its keys are off your bar until you pass again; one retry within %d days.",
+      label, R.TierName(newTier), IRL.RetryDays))
+  end
+end
+
+local function LogDiscipline(rb, key)
+  local d = rb.disciplines[key]
+  local entry = IRL.DisciplineStore(rb)[key]
+  local testKey = "d_" .. key
+  if d.scale == "percent" then
+    local ctx = IRL.ViewContext()
+    local text
+    if not entry.baseline then
+      text = "Log your Test Day result. It becomes your baseline, so test honestly: every tier is measured from it."
+    else
+      local target = R.Targets(d, entry.baseline)[R.Tier(ctx, key) + 1]
+      text = "Log today's result." .. (target and (" Next tier at " .. Units.Format(testKey, target) .. ".") or "")
+    end
+    UI.Prompt({
+      title = rb.label .. ": " .. d.label, text = text, showHow = true, requireVideo = true, test = testKey,
+      onAccept = function(v)
+        local old = R.Tier(IRL.ViewContext(), key)
+        IRL.LogMeasured(key, v, rb)
+        DroppedNotice(d.label, entry, old, R.Tier(IRL.ViewContext(), key))
+      end,
+    })
+  else
+    UI.Prompt({
+      title = rb.label .. ": " .. d.label,
+      text = "Pick the highest tier you passed on camera today.",
+      showHow = true, requireVideo = true,
+      test = testKey, value = (entry.tier or 0) + 1,
+      onAccept = function(v)
+        local old = entry.tier or 0
+        IRL.LogDiscipline(key, v - 1, rb)
+        DroppedNotice(d.label, entry, old, v - 1)
+      end,
+    })
+  end
 end
 
 local function LogSupport(key, asBaseline)
@@ -83,7 +123,9 @@ local function LogSupport(key, asBaseline)
   })
 end
 
-local function BuildRow(page, index, y, key, isSupport)
+-- A row is either discipline slot `slot` of the viewed rulebook, or a
+-- supporting test `supportKey` (shared by every spec).
+local function BuildRow(page, index, y, slot, supportKey)
   local row = CreateFrame("Frame", nil, page)
   row:SetSize(750, ROW_HEIGHT)
   row:SetPoint("TOPLEFT", 6, y)
@@ -111,49 +153,52 @@ local function BuildRow(page, index, y, key, isSupport)
   row.retest:SetPoint("TOPLEFT", 250, -34)
   row.retest:SetWidth(390)
 
-  row.log = UI.Button(row, "Log test", 80, 22, function() if isSupport then LogSupport(key) else LogDiscipline(key) end end)
-  row.log:SetPoint("RIGHT", isSupport and -50 or -6, 0)
-  if isSupport then
+  row.log = UI.Button(row, "Log test", 80, 22, function()
+    if supportKey then LogSupport(supportKey) else LogDiscipline(IRL.ViewRulebook(), row.key) end
+  end)
+  row.log:SetPoint("RIGHT", supportKey and -50 or -6, 0)
+  if supportKey then
     row.more = UI.Button(row, "...", 40, 22, function(self)
       UI.Menu(self, function(root)
-        root:CreateTitle(IRL.Supports[key].label)
-        root:CreateButton("Set a new baseline...", function() LogSupport(key, true) end)
+        root:CreateTitle(IRL.Supports[supportKey].label)
+        root:CreateButton("Set a new baseline...", function() LogSupport(supportKey, true) end)
       end)
     end)
     row.more:SetPoint("RIGHT", -6, 0)
   end
 
-  function row:Refresh()
-    local db = IRL.db
-    local tier = R.Tier(db, key)
+  function row:Refresh(ctx)
+    local rb = ctx.rb
+    local key = supportKey or rb.disciplineOrder[slot]
+    self.key = key
+    local tier = R.Tier(ctx, key)
     self.tier:SetText(TierLabel(tier))
-    local keyed = KeyedBy(key)
+    local keyed = KeyedBy(rb, key)
     self.keys:SetText(keyed ~= "" and ("Keys: " .. keyed) or "")
-    if isSupport then
-      local s, entry = IRL.Supports[key], db.supports[key]
+
+    if supportKey then
+      local s, entry = IRL.Supports[key], IRL.db.supports[key]
       self.name:SetText(s.label)
-      local test = s.test
-      if entry.baseline then
-        self.sub:SetText("Baseline " .. Units.Format(test, entry.baseline) .. ", latest " .. Units.Format(test, entry.value))
-        local targets = R.SupportTargets(entry.baseline)
-        local nextTier = tier + 1
-        self.nextText:SetText(targets[nextTier]
-          and string.format("Next: %s at %s or faster", IRL.Tiers[nextTier], Units.Format(test, targets[nextTier]))
-          or "|cffffd100Legendary - top tier|r")
-      else
-        self.sub:SetText("Supporting test")
-        self.nextText:SetText("Log a first result to set your baseline.")
-      end
+      local sub, nextText = MeasuredText(s, s.test, entry, tier)
+      self.sub:SetText(sub or "Supporting test")
+      self.nextText:SetText(nextText or "Log a first result to set your baseline.")
       self.retest:SetText(RetestText(entry))
+      return
+    end
+
+    local d, entry = rb.disciplines[key], ctx.disc[key]
+    self.name:SetText(d.label)
+    if d.scale == "percent" then
+      local sub, nextText = MeasuredText(d, "d_" .. key, entry, tier)
+      self.sub:SetText(sub or d.equipment)
+      self.nextText:SetText(nextText or (d.measure .. ": Test Day sets your baseline."))
     else
-      local d, entry = IRL.Disciplines[key], db.disciplines[key]
-      self.name:SetText(d.label)
       self.sub:SetText(d.equipment)
       self.nextText:SetText(d.tiers[tier + 1]
         and ("Next: " .. IRL.Tiers[tier + 1] .. " - " .. d.tiers[tier + 1])
         or "|cffffd100Legendary - top tier|r")
-      self.retest:SetText(RetestText(entry))
     end
+    self.retest:SetText(RetestText(entry))
   end
   return row
 end
@@ -161,19 +206,20 @@ end
 UI.RegisterPage("Disciplines", function(page)
   page.rows = {}
   local y = -4
-  for i, key in ipairs(IRL.DisciplineOrder) do
-    table.insert(page.rows, BuildRow(page, i, y, key, false))
+  for slot = 1, 6 do
+    table.insert(page.rows, BuildRow(page, slot, y, slot))
     y = y - ROW_HEIGHT
   end
-  local sep = UI.Text(page, "GameFontNormalSmall", "Supporting tests (don't count toward rank; keys only)")
+  local sep = UI.Text(page, "GameFontNormalSmall", "Supporting tests (shared by every spec; keys only, not rank)")
   sep:SetPoint("TOPLEFT", 14, y - 4)
   y = y - 20
   for i, key in ipairs(IRL.SupportOrder) do
-    table.insert(page.rows, BuildRow(page, i, y, key, true))
+    table.insert(page.rows, BuildRow(page, i, y, nil, key))
     y = y - ROW_HEIGHT
   end
 
   function page:Refresh()
-    for _, row in ipairs(self.rows) do row:Refresh() end
+    local ctx = IRL.ViewContext()
+    for _, row in ipairs(self.rows) do row:Refresh(ctx) end
   end
 end)

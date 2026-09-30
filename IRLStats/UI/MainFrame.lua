@@ -20,8 +20,11 @@ end
 
 local function RefreshHeader()
   local name = UnitName("player") or ""
-  local enforced = IRL.enforced and "|cff4dff4dgates active|r" or "|cff999999not enforced on this character|r"
+  local enforced = IRL.enforced and ("|cff4dff4d" .. IRL.rb.label .. " gates active|r")
+    or "|cff999999not enforced on this character|r"
   main.status:SetText(name .. " - " .. enforced)
+  local view = IRL.ViewRulebook()
+  main.spec:SetText("Showing: " .. view.label .. (view == IRL.rb and "" or " (not your spec)"))
 end
 
 local function Build()
@@ -45,6 +48,18 @@ local function Build()
 
   f.setup = UI.Button(f, "Test Day / retest", 130, 22, function() IRL.UI.ShowWizard() end)
   f.setup:SetPoint("TOPRIGHT", -12, -28)
+
+  -- Each spec has its own ladder; view either one, whatever you're playing.
+  f.spec = UI.Button(f, "", 210, 22, function(self)
+    UI.Menu(self, function(root)
+      root:CreateTitle("Rulebook")
+      for _, key in ipairs(IRL.RulebookOrder) do
+        local rb = IRL.Rulebooks[key]
+        root:CreateButton(rb.label .. (rb == IRL.rb and " (your spec)" or ""), function() IRL.SetViewRulebook(rb) end)
+      end
+    end)
+  end)
+  f.spec:SetPoint("RIGHT", f.setup, "LEFT", -6, 0)
 
   f.inset = CreateFrame("Frame", nil, f, "InsetFrameTemplate")
   f.inset:SetPoint("TOPLEFT", 4, -60)
@@ -100,5 +115,6 @@ function IRL.ToggleMain(tab)
 end
 
 IRL.On("STATE_CHANGED", UI.RefreshMain)
+IRL.On("VIEW_CHANGED", UI.RefreshMain)
 IRL.On("FLAG_ADDED", UI.RefreshMain)
 IRL.On("LOADOUT_READ", UI.RefreshMain)
