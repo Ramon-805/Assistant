@@ -1,0 +1,35 @@
+## Interface: 120100
+## Title: Gymlocke (IRL Stats)
+## Notes: Gymlocke rulebooks for Windwalker and Brewmaster monks: talents unlock as you pass fitness tests. Flags, never blocks.
+## Author: Ray
+## Version: 0.3.1
+## IconTexture: Interface\Icons\ClassIcon_Monk
+## SavedVariables: IRLStatsDB
+## SavedVariablesPerCharacter: IRLStatsCharDB
+
+Init.lua
+
+Data\Rulebook.lua
+Data\Tests.lua
+
+Core\Units.lua
+Core\Rules.lua
+Core\DB.lua
+
+Detect\Flags.lua
+UI\Widgets.lua
+Detect\Casts.lua
+Detect\Talents.lua
+Detect\Flying.lua
+
+UI\MainFrame.lua
+UI\RankTab.lua
+UI\DisciplinesTab.lua
+UI\FlagsTab.lua
+UI\Wizard.lua
+UI\Overlays.lua
+UI\Tooltips.lua
+UI\TalentFrame.lua
+UI\Minimap.lua
+
+Main.lua
