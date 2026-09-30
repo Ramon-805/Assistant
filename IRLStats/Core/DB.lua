@@ -89,10 +89,12 @@ function IRL.ActiveRulebook()
   return IRL.Rulebooks[key or "windwalker"]
 end
 
--- Does the current spec have a rulebook to enforce? (No spec counts as yes.)
+-- Is the current spec enforced? Everything except a real spec without a
+-- rulebook (IRL.UnruledSpecs). Below level 10 WoW reports a starter spec
+-- with its own ID rather than none; that plays under Windwalker's rules.
 function IRL.SpecHasRulebook()
   local specID = IRL.CurrentSpecID and IRL.CurrentSpecID()
-  return specID == nil or IRL.SpecRulebook[specID] ~= nil
+  return not (specID and IRL.UnruledSpecs[specID])
 end
 
 function IRL.ViewRulebook() return IRL.viewRb or IRL.rb or IRL.Rulebooks.windwalker end

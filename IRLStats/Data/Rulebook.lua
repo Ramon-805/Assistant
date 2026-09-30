@@ -100,6 +100,9 @@ IRL.Ranks = {
 IRL.Rulebooks = {}
 IRL.RulebookOrder = { "windwalker", "brewmaster" }
 IRL.SpecRulebook = { [269] = "windwalker", [268] = "brewmaster" }
+-- Monk specs with no rulebook yet: never enforced. Any other spec ID (the
+-- starter spec below level 10) falls back to Windwalker's rulebook.
+IRL.UnruledSpecs = { [270] = true } -- Mistweaver
 IRL.SpellIDHints = {}
 
 local function Merge(...)

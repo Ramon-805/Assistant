@@ -317,7 +317,18 @@ test("brewmaster: the spec picks the rulebook", function()
   eq(IRL.rb.key, "brewmaster")
   spec = 270; IRL.Recompute()
   eq(IRL.rb.key, "windwalker", "a spec without a rulebook falls back")
-  eq(IRL.SpecHasRulebook(), false)
+  eq(IRL.SpecHasRulebook(), false, "Mistweaver isn't enforced")
+end)
+
+test("below level 10 the starter spec is enforced under Windwalker", function()
+  fresh()
+  level = 5
+  spec = 1450; IRL.Recompute() -- monk starter spec
+  eq(IRL.SpecHasRulebook(), true)
+  eq(IRL.rb.key, "windwalker")
+  spec = nil; IRL.Recompute()
+  eq(IRL.SpecHasRulebook(), true, "no spec at all is enforced too")
+  eq(IRL.FindGate("Paralysis").unlocked, false, "keyed spells locked before Test Day")
 end)
 
 test("brewmaster: percent tiers are +15/30/50% over baseline, rounded up", function()
