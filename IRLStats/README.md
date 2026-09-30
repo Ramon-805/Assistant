@@ -20,6 +20,9 @@ The mile run and reaction time are shared supporting tests.
 
 ## Install
 
+Builds are numbered: `IRLStats-vX.Y.Z.zip`. What changed in each is in
+[CHANGELOG.md](CHANGELOG.md), and `/irl version` shows what's installed.
+
 Copy this `IRLStats` folder into
 `World of Warcraft/_retail_/Interface/AddOns/`, then restart or `/reload`.
 The `tests/` folder can stay; WoW only loads files listed in `IRLStats.toc`.

@@ -40,7 +40,8 @@ local function Build()
   f:SetScript("OnDragStop", f.StopMovingOrSizing)
   tinsert(UISpecialFrames, "IRLStatsFrame")
 
-  if f.SetTitle then f:SetTitle("Gymlocke") elseif f.TitleText then f.TitleText:SetText("Gymlocke") end
+  local title = "Gymlocke v" .. IRL.version
+  if f.SetTitle then f:SetTitle(title) elseif f.TitleText then f.TitleText:SetText(title) end
   if f.SetPortraitToUnit then f:SetPortraitToUnit("player") end
 
   f.status = UI.Text(f, "GameFontHighlightSmall")

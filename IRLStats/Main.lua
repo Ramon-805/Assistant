@@ -108,6 +108,7 @@ local HELP = {
   "/irl - open the Gymlocke sheet (rank, disciplines, flags)",
   "/irl rank | disciplines | flags - open a tab",
   "/irl testday - run Test Day for your current spec (log all six disciplines)",
+  "/irl version - show the installed version",
   "/irl verify - check rulebook talent names against your spells and talents",
   "/irl minimap - show/hide the minimap button",
 }
@@ -120,6 +121,7 @@ SlashCmdList.IRLSTATS = function(msg)
   elseif cmd == "rank" or cmd == "disciplines" or cmd == "flags" then IRL.ToggleMain(cmd)
   elseif cmd == "testday" or cmd == "setup" then IRL.UI.ShowWizard()
   elseif cmd == "verify" then Verify()
+  elseif cmd == "version" then IRL.Print("Gymlocke v" .. IRL.version)
   elseif cmd == "minimap" then
     IRL.db.minimap.hide = not IRL.db.minimap.hide
     IRL.minimapButton:SetShown(not IRL.db.minimap.hide)

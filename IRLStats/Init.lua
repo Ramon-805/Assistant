@@ -5,6 +5,10 @@
 local ADDON, IRL = ...
 IRL.name = ADDON or "IRLStats"
 
+-- Version from the TOC (## Version), shown in the window title and /irl version.
+local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or GetAddOnMetadata
+IRL.version = (getMeta and getMeta(IRL.name, "Version")) or "dev"
+
 IRL.Config = {
   flagCooldown = 60,      -- seconds; same locked spell flags at most once per window
   warningSound = true,
